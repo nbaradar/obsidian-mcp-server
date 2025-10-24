@@ -1,0 +1,8 @@
+default: nader
+vaults:
+  nader:
+    path: "/Users/naderbaradar/Library/Mobile Documents/iCloud~md~obsidian/Documents/nader_obsidian_vault/nader_obsidian_vault"
+    description: "Primary personal vault"
+  quartz:
+    path: "/Users/naderbaradar/Library/Mobile Documents/iCloud~md~obsidian/Documents/quartz-vault/quartz/content"
+    description: "Blog vault. Called The Latent Space. Made using Obsidian and Quartz."
