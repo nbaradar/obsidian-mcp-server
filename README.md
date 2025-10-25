@@ -219,8 +219,8 @@ See [`AGENTS.md`](./AGENTS.md) for detailed development notes and architecture d
 ## 📚 Documentation
 
 - **[Development Journey](https://nbaradar.github.io/the-latent-space/Personal-Projects/MCP/Obsidian-MCP-Server)** — Full technical writeup with research notes, debugging stories, and design iterations
-- **[MCP Overview](https://nbaradar.github.io/the-latent-space/Notes-Research/AI-ML/Model-Context-Protocol/MCP-Overview)** — My research notes on the Model Context Protocol
-- **[Building Your First MCP Server](https://nbaradar.github.io/the-latent-space/Notes-Research/AI-ML/Model-Context-Protocol/Build-an-MCP-Server)** — Step-by-step guide
+- **[MCP Overview](https://nbaradar.github.io/the-latent-space/Notes-+-Research/AI-+-ML/Model-Context-Protocol/MCP-Overview)** — My research notes on the Model Context Protocol
+- **[Building Your First MCP Server](https://nbaradar.github.io/the-latent-space/Notes-+-Research/AI-+-ML/Model-Context-Protocol/Build-an-MCP-Server)** — Step-by-step guide
 
 ---
 
