@@ -39,6 +39,7 @@ Notes
 4. `delete_obsidian_note` — Remove the note from disk.
 5. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
 6. `search_obsidian_notes` — Shallow search against note identifiers (not file contents yet).
+7. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
 
 Each tool’s docstring includes UX hints explicitly telling Claude Desktop to use `list_vaults` for discovery and that omitting `vault` defers to the active or default vault. This dramatically improves agent behavior: Claude can respond to requests like “update my work vault” by first setting the vault, then calling note helpers without needing to restate the name every time.
 
@@ -74,7 +75,7 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 ### Example Use Cases
 
 * Quickly create and edit notes directly from Claude Desktop.
-* Search the vault for keywords or ideas.
+* Search the vault for keywords or ideas, returning snippets first (`search_obsidian_content`) and escalating to full reads only when needed.
 * Build higher-level automations later (e.g., summarizing a folder, appending daily entries).
 
 ### Summary

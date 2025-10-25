@@ -1,5 +1,5 @@
 # Obsidian MCP Server
-This project exposes one or more local Obsidian vaults to Claude Desktop through the Model Context Protocol (MCP). The server is built with FastMCP, uses `vaults.yaml` to whitelist vault paths, and provides tools for listing, creating, reading, updating, deleting, and searching markdown notes. 
+This project exposes one or more local Obsidian vaults to Claude Desktop through the Model Context Protocol (MCP). The server is built with FastMCP, uses `vaults.yaml` to whitelist vault paths, and provides tools for listing, creating, reading, updating, deleting, and searching markdown notes—including a content search tool that returns short, token-efficient snippets. See `AGENTS.md` for the detailed design notes and roadmap.
 
 ## Tool Calls Available:
 ### Management
@@ -13,5 +13,8 @@ This project exposes one or more local Obsidian vaults to Claude Desktop through
 - **delete_obsidian_note** — Remove the note from disk.
 - **list_obsidian_notes** — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
 - **search_obsidian_notes** — Shallow search against note identifiers (not file contents yet).
+- **search_obsidian_content** — Snippet-focused content search across all notes in approved vaults. walks each .md, skips unreadable files, gathers up to three 200-character windows per file, sorts by match count, caps at ten results, and keeps responses vault-aware while logging query stats.
 
 See `AGENTS.md` for the detailed design notes and roadmap.
+
+This project exposes one or more local Obsidian vaults to Claude Desktop through the Model Context Protocol (MCP). The server is built with FastMCP, uses `vaults.yaml` to whitelist vault paths, and provides tools for listing, creating, reading, updating, deleting, and searching markdown notes—including a content search tool that returns short, token-efficient snippets. See `AGENTS.md` for the detailed design notes and roadmap.

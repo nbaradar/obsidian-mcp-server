@@ -279,6 +279,79 @@ def search_notes(query: str, vault: VaultMetadata) -> dict[str, Any]:
         "matches": matches,
     }
 
+
+def search_note_content(query: str, vault: VaultMetadata) -> dict[str, Any]:
+    """Search note file contents for the query and return bounded snippets."""
+    _ensure_vault_ready(vault)
+
+    trimmed_query = query.strip()
+    if not trimmed_query:
+        raise ValueError("Search query cannot be empty.")
+
+    query_lower = trimmed_query.lower()
+    results: list[dict[str, Any]] = []
+
+    for path in vault.path.rglob("*.md"):
+        if not path.is_file():
+            continue
+
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError as exc:
+            logger.warning(
+                "Skipping file '%s' in vault '%s' due to read error: %s",
+                path,
+                vault.name,
+                exc,
+            )
+            continue
+
+        if not text:
+            continue
+
+        text_lower = text.lower()
+        match_positions: list[int] = []
+        start_index = 0
+
+        while True:
+            index = text_lower.find(query_lower, start_index)
+            if index == -1:
+                break
+            match_positions.append(index)
+            start_index = index + len(query_lower)
+
+        if not match_positions:
+            continue
+
+        snippets: list[str] = []
+        for position in match_positions[:3]:
+            snippet_start = max(0, position - 100)
+            snippet_end = min(len(text), position + len(trimmed_query) + 100)
+            snippet = text[snippet_start:snippet_end]
+
+            if snippet_start > 0:
+                snippet = "..." + snippet
+            if snippet_end < len(text):
+                snippet = snippet + "..."
+
+            snippets.append(snippet)
+
+        results.append(
+            {
+                "path": path.relative_to(vault.path).as_posix(),
+                "match_count": len(match_positions),
+                "snippets": snippets,
+            }
+        )
+
+    results.sort(key=lambda item: item["match_count"], reverse=True)
+
+    return {
+        "vault": vault.name,
+        "query": trimmed_query,
+        "results": results[:10],
+    }
+
 # MCP tools
 @mcp.tool()
 async def list_vaults(ctx: Context | None = None) -> dict[str, Any]:
@@ -374,6 +447,24 @@ async def search_obsidian_notes(
     """Search note names. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return search_notes(query, metadata)
+
+
+@mcp.tool()
+async def search_obsidian_content(
+    query: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Search note contents for snippets. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    result = search_note_content(query, metadata)
+    logger.info(
+        "Content search in vault '%s' for query '%s' matched %s files",
+        metadata.name,
+        result["query"],
+        len(result["results"]),
+    )
+    return result
 
 def main():
     #Initialize and run the FastMCP server
