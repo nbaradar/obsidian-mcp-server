@@ -1,4 +1,6 @@
 # Obsidian MCP Server
+Dev Notes: https://nbaradar.github.io/the-latent-space/Personal-Projects/MCP/Obsidian-MCP-Server
+
 This project exposes one or more local Obsidian vaults to Claude Desktop through the Model Context Protocol (MCP). The server is built with FastMCP, uses `vaults.yaml` to whitelist vault paths, and provides tools for listing, creating, reading, replacing, appending/prepending, section-level editing, and searching markdown notes—including a content search tool that returns short, token-efficient snippets. See `AGENTS.md` for the detailed design notes and roadmap.
 
 ## Tool Calls Available:
