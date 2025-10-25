@@ -12,7 +12,7 @@
 
 ## Why This Exists
 
-Obsidian is where knowledge lives. But connecting them requires more than just "read file" — you need **vault-aware sessions**, **heading-based navigation**, and **token-efficient search** that doesn't blow your context window.
+Obsidian Vaults are where my knowledge lives. But connecting them to LLMs requires more than just "read file" — you need **vault-aware sessions**, **heading-based navigation**, and **token-efficient search** that doesn't blow your context window.
 
 This MCP server solves that by treating Obsidian vaults as **first-class data sources** for LLMs, with tools designed around how markdown actually works (structure-based, not line-number-based).
 
