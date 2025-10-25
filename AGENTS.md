@@ -32,14 +32,23 @@ Management
 1. `list_vaults` — Returns the default vault, the caller’s active vault (if set), and metadata for each configured vault (name, path, description, existence flag). Primary discovery entry point.
 2. `set_active_vault` — Stores the caller’s preferred vault for the lifetime of the MCP session. Subsequent tool calls without a `vault` argument use this value.
 
-Notes
+Notes — Core edits
 1. `create_obsidian_note` — Create a markdown file (fails if the note already exists).
 2. `retrieve_obsidian_note` — Read the full contents of a note.
-3. `update_obsidian_note` — Replace the file contents entirely.
-4. `delete_obsidian_note` — Remove the note from disk.
-5. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
-6. `search_obsidian_notes` — Shallow search against note identifiers (not file contents yet).
-7. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
+3. `replace_obsidian_note` — Replace the file contents entirely (former `update_obsidian_note`).
+4. `append_to_obsidian_note` — Append content to the end of a note, inserting separators when helpful.
+5. `prepend_to_obsidian_note` — Prepend content before the existing body, handling separators automatically.
+6. `delete_obsidian_note` — Remove the note from disk.
+
+Notes — Structured inserts & sections
+1. `insert_after_heading_obsidian_note` — Insert content immediately after a heading (case-insensitive match, supports `#`-style levels).
+2. `replace_section_obsidian_note` — Replace everything under a heading until the next heading of equal or higher level.
+3. `delete_section_obsidian_note` — Remove a heading and its section (up to the next heading of equal or higher level).
+
+Notes — Discovery & search
+1. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
+2. `search_obsidian_notes` — Shallow search against note identifiers (not file contents yet).
+3. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
 
 Each tool’s docstring includes UX hints explicitly telling Claude Desktop to use `list_vaults` for discovery and that omitting `vault` defers to the active or default vault. This dramatically improves agent behavior: Claude can respond to requests like “update my work vault” by first setting the vault, then calling note helpers without needing to restate the name every time.
 

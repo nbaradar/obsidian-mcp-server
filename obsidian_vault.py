@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -175,6 +176,71 @@ def _note_display_name(vault: VaultMetadata, path: Path) -> str:
     return relative.as_posix()
 
 
+def _combine_with_newline(left: str, right: str) -> str:
+    """Concatenate two strings, inserting a newline between them when needed."""
+    if not left:
+        return right
+    if not right:
+        return left
+    if not left.endswith("\n") and not right.startswith("\n"):
+        return f"{left}\n{right}"
+    return left + right
+
+
+HEADING_PATTERN = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
+
+
+def _normalize_heading_key(value: str) -> str:
+    """Normalize heading text for case-insensitive comparisons."""
+    return " ".join(value.strip().split()).lower()
+
+
+def _parse_headings(text: str) -> list[dict[str, Any]]:
+    """Return a list of headings with positional metadata."""
+    headings: list[dict[str, Any]] = []
+    for match in HEADING_PATTERN.finditer(text):
+        start = match.start()
+        end = match.end()
+
+        # Extend end to include trailing newline characters
+        if text[end : end + 2] == "\r\n":
+            end += 2
+        elif end < len(text) and text[end] in ("\n", "\r"):
+            end += 1
+
+        title = match.group("title").strip()
+        headings.append(
+            {
+                "level": len(match.group("hashes")),
+                "title": title,
+                "normalized": _normalize_heading_key(title),
+                "start": start,
+                "end": end,
+            }
+        )
+    return headings
+
+
+def _locate_heading(text: str, heading: str) -> tuple[dict[str, Any], int, list[dict[str, Any]]]:
+    """Find a heading within the given text, returning metadata and position index."""
+    headings = _parse_headings(text)
+    normalized_target = _normalize_heading_key(heading)
+    for index, info in enumerate(headings):
+        if info["normalized"] == normalized_target:
+            return info, index, headings
+    raise ValueError(f"Heading '{heading}' was not found.")
+
+
+def _section_bounds(headings: list[dict[str, Any]], index: int, text_length: int) -> tuple[int, int]:
+    """Compute the content boundaries for the heading's section."""
+    current = headings[index]
+    section_start = current["end"]
+    for subsequent in headings[index + 1 :]:
+        if subsequent["level"] <= current["level"]:
+            return section_start, subsequent["start"]
+    return section_start, text_length
+
+
 def create_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
     """Create a markdown note with the given title and content."""
     _ensure_vault_ready(vault)
@@ -214,8 +280,8 @@ def retrieve_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
     }
 
 
-def update_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Update an existing markdown note with the given title and new content."""
+def replace_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
+    """Replace the entire content of an existing markdown note."""
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -224,12 +290,203 @@ def update_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any
         )
 
     target_path.write_text(content, encoding="utf-8")
-    logger.info("Updated note '%s' in vault '%s'", _note_display_name(vault, target_path), vault.name)
+    logger.info("Replaced note '%s' in vault '%s'", _note_display_name(vault, target_path), vault.name)
     return {
         "vault": vault.name,
         "note": _note_display_name(vault, target_path),
         "path": str(target_path),
-        "status": "updated",
+        "status": "replaced",
+    }
+
+
+def append_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
+    """Append content to the end of a markdown note."""
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    existing = target_path.read_text(encoding="utf-8")
+    updated = _combine_with_newline(existing, content)
+    target_path.write_text(updated, encoding="utf-8")
+    logger.info("Appended content to note '%s' in vault '%s'", _note_display_name(vault, target_path), vault.name)
+    return {
+        "vault": vault.name,
+        "note": _note_display_name(vault, target_path),
+        "path": str(target_path),
+        "status": "appended",
+    }
+
+
+def prepend_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
+    """Prepend content to the beginning of a markdown note."""
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    existing = target_path.read_text(encoding="utf-8")
+    updated = _combine_with_newline(content, existing)
+    target_path.write_text(updated, encoding="utf-8")
+    logger.info("Prepended content to note '%s' in vault '%s'", _note_display_name(vault, target_path), vault.name)
+    return {
+        "vault": vault.name,
+        "note": _note_display_name(vault, target_path),
+        "path": str(target_path),
+        "status": "prepended",
+    }
+
+
+def insert_after_heading(
+    title: str,
+    content: str,
+    heading: str,
+    vault: VaultMetadata,
+) -> dict[str, Any]:
+    """Insert content immediately after the specified heading."""
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    try:
+        heading_info, _, _ = _locate_heading(text, heading)
+    except ValueError as exc:
+        raise ValueError(
+            f"Heading '{heading}' not found in note '{_note_display_name(vault, target_path)}'. "
+            "Use `retrieve_obsidian_note` to inspect the note structure."
+        ) from exc
+
+    insert_pos = heading_info["end"]
+    before = text[:insert_pos]
+    after = text[insert_pos:]
+    insertion = content
+
+    if insertion:
+        if before and not before.endswith("\n") and not insertion.startswith("\n"):
+            insertion = "\n" + insertion
+        if not insertion.endswith("\n") and after and not after.startswith("\n"):
+            insertion = insertion + "\n"
+
+    updated = before + insertion + after
+    target_path.write_text(updated, encoding="utf-8")
+    note_name = _note_display_name(vault, target_path)
+    logger.info(
+        "Inserted content after heading '%s' in note '%s' (vault '%s')",
+        heading_info["title"],
+        note_name,
+        vault.name,
+    )
+    return {
+        "vault": vault.name,
+        "note": note_name,
+        "path": str(target_path),
+        "heading": heading_info["title"],
+        "status": "inserted_after_heading",
+    }
+
+
+def replace_section(
+    title: str,
+    content: str,
+    heading: str,
+    vault: VaultMetadata,
+) -> dict[str, Any]:
+    """Replace the content under a heading (until the next heading of same or higher level)."""
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    try:
+        heading_info, index, headings = _locate_heading(text, heading)
+    except ValueError as exc:
+        raise ValueError(
+            f"Heading '{heading}' not found in note '{_note_display_name(vault, target_path)}'. "
+            "Use `retrieve_obsidian_note` to inspect the note structure."
+        ) from exc
+
+    section_start, section_end = _section_bounds(headings, index, len(text))
+    before = text[:section_start]
+    after = text[section_end:]
+    replacement = content
+
+    if replacement:
+        if before and not before.endswith("\n") and not replacement.startswith("\n"):
+            replacement = "\n" + replacement
+        if not replacement.endswith("\n") and after and not after.startswith("\n"):
+            replacement = replacement + "\n"
+
+    updated = before + replacement + after
+    target_path.write_text(updated, encoding="utf-8")
+    note_name = _note_display_name(vault, target_path)
+    logger.info(
+        "Replaced section under heading '%s' in note '%s' (vault '%s')",
+        heading_info["title"],
+        note_name,
+        vault.name,
+    )
+    return {
+        "vault": vault.name,
+        "note": note_name,
+        "path": str(target_path),
+        "heading": heading_info["title"],
+        "status": "section_replaced",
+    }
+
+
+def delete_section(
+    title: str,
+    heading: str,
+    vault: VaultMetadata,
+) -> dict[str, Any]:
+    """Delete a heading and its section content."""
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    try:
+        heading_info, index, headings = _locate_heading(text, heading)
+    except ValueError as exc:
+        raise ValueError(
+            f"Heading '{heading}' not found in note '{_note_display_name(vault, target_path)}'. "
+            "Use `retrieve_obsidian_note` to inspect the note structure."
+        ) from exc
+
+    section_start, section_end = _section_bounds(headings, index, len(text))
+    updated = text[: heading_info["start"]] + text[section_end:]
+
+    # Clean up double blank lines introduced by deletion
+    updated = re.sub(r"\n{3,}", "\n\n", updated)
+
+    target_path.write_text(updated, encoding="utf-8")
+    note_name = _note_display_name(vault, target_path)
+    logger.info(
+        "Deleted heading '%s' and its section in note '%s' (vault '%s')",
+        heading_info["title"],
+        note_name,
+        vault.name,
+    )
+    return {
+        "vault": vault.name,
+        "note": note_name,
+        "path": str(target_path),
+        "heading": heading_info["title"],
+        "status": "section_deleted",
     }
 
 
@@ -406,15 +663,77 @@ async def retrieve_obsidian_note(
 
 
 @mcp.tool()
-async def update_obsidian_note(
+async def replace_obsidian_note(
     title: str,
     content: str,
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Replace a note's contents. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Replace a note's entire content. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
-    return update_note(title, content, metadata)
+    return replace_note(title, content, metadata)
+
+
+@mcp.tool()
+async def append_to_obsidian_note(
+    title: str,
+    content: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Append content to a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return append_note(title, content, metadata)
+
+
+@mcp.tool()
+async def prepend_to_obsidian_note(
+    title: str,
+    content: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Prepend content to a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return prepend_note(title, content, metadata)
+
+
+@mcp.tool()
+async def insert_after_heading_obsidian_note(
+    title: str,
+    content: str,
+    heading: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Insert content immediately after a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return insert_after_heading(title, content, heading, metadata)
+
+
+@mcp.tool()
+async def replace_section_obsidian_note(
+    title: str,
+    content: str,
+    heading: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Replace the content under a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return replace_section(title, content, heading, metadata)
+
+
+@mcp.tool()
+async def delete_section_obsidian_note(
+    title: str,
+    heading: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Delete a heading and its section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return delete_section(title, heading, metadata)
 
 
 @mcp.tool()

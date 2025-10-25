@@ -6,3 +6,6 @@ vaults:
   quartz:
     path: "/Users/naderbaradar/Library/Mobile Documents/iCloud~md~obsidian/Documents/quartz-vault/quartz/content"
     description: "Blog vault. Called The Latent Space. Made using Obsidian and Quartz."
+  test:
+    path: "/Users/naderbaradar/Library/Mobile Documents/iCloud~md~obsidian/Documents/test"
+    description: "A test vault for trying out new MCP tools, ideas and plugins."
