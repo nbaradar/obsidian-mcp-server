@@ -12,7 +12,7 @@
 
 ## Why This Exists
 
-Obsidian is where knowledge lives. Claude is how we interact with it. But connecting them requires more than just "read file" — you need **vault-aware sessions**, **heading-based navigation**, and **token-efficient search** that doesn't blow your context window.
+Obsidian is where knowledge lives. But connecting them requires more than just "read file" — you need **vault-aware sessions**, **heading-based navigation**, and **token-efficient search** that doesn't blow your context window.
 
 This MCP server solves that by treating Obsidian vaults as **first-class data sources** for LLMs, with tools designed around how markdown actually works (structure-based, not line-number-based).
 
@@ -43,8 +43,6 @@ Links and references
 - `insert_after_heading("Project Ideas")` → Adds content in the right semantic location
 - `replace_section("Idea 1")` → Updates just that subsection
 - `delete_section("Resources")` → Removes heading + all content until next same-level heading
-
-No fragile line numbers. No regex chaos. Just clean, predictable edits.
 
 ### 🔍 **Token-Efficient Search**
 Searching 10 notes with full content: **~50,000 tokens** 💸  
@@ -113,7 +111,7 @@ vaults:
 
 3. **Restart Claude Desktop**
 
-You should see "🔌 MCP" in the Claude interface with your Obsidian tools available.
+You should see your Obsidian tools available in the Claude for Desktop Tools menu (Small button with 2 knobs under the search bar)
 
 ---
 
@@ -186,9 +184,7 @@ Every tool is designed to minimize context window usage:
 - Combined operations over multiple tool calls
 
 ### 2. **Markdown-Native Operations**
-Traditional editors use line numbers. This breaks with note edits.
-
-We use **semantic anchors** (headings) that remain stable as content changes.
+Traditional editors use line numbers. This breaks with note edits. **semantic anchors** (headings) remain stable as content changes.
 
 ### 3. **Session-Aware Context**
 Claude can switch between vaults mid-conversation without losing state.
