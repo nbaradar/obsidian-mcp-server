@@ -117,6 +117,16 @@ You should see "🔌 MCP" in the Claude interface with your Obsidian tools avail
 
 ---
 
+## 🎬 What It Looks Like
+
+Once configured, you'll see your Obsidian tools available in Claude Desktop:
+
+![Obsidian MCP Tools listed in Claude for Desktop](image.png)
+
+*12 tools available for multi-vault note management with heading-aware operations, for now* 😁
+
+---
+
 ## 📖 Usage Examples
 
 ### Basic Operations
