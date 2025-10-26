@@ -123,7 +123,7 @@ Once configured, you'll see your Obsidian tools available in Claude Desktop:
 ![Asking for a Grocery List](image-1.png)
 ![The Grocery List Mardown generated with MCP](image-2.png)
 
-*12 tools available for multi-vault note management with heading-aware operations, for now* 😁
+*12 tools available for multi-vault note management with heading-aware operations*
 
 ---
 
