@@ -122,8 +122,11 @@ Once configured, you'll see your Obsidian tools available in Claude Desktop:
 ![Obsidian MCP Tools listed in Claude for Desktop](image.png)
 ![Asking for a Grocery List](image-1.png)
 ![The Grocery List Mardown generated with MCP](image-2.png)
+*17 tools available for multi-vault note management with heading-aware operations*
 
-*13 tools available for multi-vault note management with heading-aware operations*
+Additionally, you can use your preferred MCP Clients as well! Here I'm using VSCode with Copilot in Agent mode.  
+![Obsidian MCP server connected to VSCode Copilot](image-3.png)
+For more detail on how to connect VSCode to MCP, [check here](https://learn.microsoft.com/en-us/visualstudio/ide/mcp-servers?view=vs-2022#options-for-adding-an-mcp-server)
 
 ---
 
