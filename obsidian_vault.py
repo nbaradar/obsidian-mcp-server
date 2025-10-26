@@ -11,8 +11,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+import platform
 
 import yaml
 from mcp.server.fastmcp import Context, FastMCP
@@ -297,6 +299,51 @@ def _combine_with_newline(left: str, right: str) -> str:
     if not left.endswith("\n") and not right.startswith("\n"):
         return f"{left}\n{right}"
     return left + right
+
+
+def _resolve_folder_path(vault: VaultMetadata, folder_path: str) -> Path:
+    """Resolve a folder path within the vault, enforcing sandbox constraints.
+
+    Args:
+        vault: Vault metadata.
+        folder_path: Folder path supplied by the caller (relative to vault root).
+
+    Returns:
+        Absolute :class:`Path` to the folder inside the vault.
+
+    Raises:
+        ValueError: If the folder escapes the vault boundaries.
+    """
+    candidate = (vault.path / Path(folder_path)).resolve(strict=False)
+    vault_root = vault.path.resolve(strict=False)
+    if not candidate.is_relative_to(vault_root):
+        raise ValueError(f"Folder '{folder_path}' escapes vault '{vault.name}'.")
+    return candidate
+
+
+def _get_note_metadata(note_path: Path) -> dict[str, Any]:
+    """Extract filesystem metadata for a note in a cross-platform friendly way.
+
+    Args:
+        note_path: Absolute path to the markdown file.
+
+    Returns:
+        A dictionary containing modification timestamp, optional creation timestamp,
+        and file size in bytes.
+    """
+    stat = note_path.stat()
+    metadata: dict[str, Any] = {
+        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        "size": stat.st_size,
+    }
+
+    system = platform.system()
+    if system in ("Darwin", "Windows"):
+        metadata["created"] = datetime.fromtimestamp(stat.st_ctime).isoformat()
+    elif hasattr(stat, "st_birthtime"):
+        metadata["created"] = datetime.fromtimestamp(stat.st_birthtime).isoformat()
+
+    return metadata
 
 
 HEADING_PATTERN = re.compile(r"^(?P<hashes>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
@@ -873,42 +920,228 @@ def delete_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
     }
 
 
-def list_notes(vault: VaultMetadata) -> dict[str, Any]:
+def move_note(
+    old_title: str,
+    new_title: str,
+    vault: VaultMetadata,
+    update_links: bool = True,
+) -> dict[str, Any]:
+    """Move or rename a note, optionally updating backlinks across the vault.
+
+    Args:
+        old_title: Current note identifier (without ``.md``).
+        new_title: Desired note identifier (without ``.md``).
+        vault: Vault metadata.
+        update_links: When ``True`` update wikilinks/markdown links referencing the note.
+
+    Returns:
+        A dictionary summarizing the operation outcome, including the number of notes that
+        required backlink adjustments.
+
+    Raises:
+        FileNotFoundError: If the original note cannot be located.
+        FileExistsError: If a note already exists at the new location.
+        ValueError: If either identifier fails sandbox validation.
+    """
+    _ensure_vault_ready(vault)
+    old_path = _resolve_note_path(vault, old_title)
+    new_path = _resolve_note_path(vault, new_title)
+
+    if not old_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, old_path)}' not found in vault '{vault.name}'."
+        )
+
+    if old_path == new_path:
+        links_updated = 0
+        if update_links:
+            links_updated = _update_backlinks(
+                vault,
+                _note_display_name(vault, old_path),
+                _note_display_name(vault, new_path),
+            )
+        return {
+            "vault": vault.name,
+            "old_path": _note_display_name(vault, old_path),
+            "new_path": _note_display_name(vault, new_path),
+            "links_updated": links_updated,
+            "status": "moved",
+        }
+
+    if new_path.exists():
+        raise FileExistsError(
+            f"Note '{_note_display_name(vault, new_path)}' already exists in vault '{vault.name}'."
+        )
+
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+
+    old_display = _note_display_name(vault, old_path)
+    old_path.rename(new_path)
+
+    links_updated = 0
+    if update_links:
+        links_updated = _update_backlinks(vault, old_display, _note_display_name(vault, new_path))
+
+    logger.info(
+        "Moved note from '%s' to '%s' in vault '%s' (%d links updated)",
+        old_display,
+        _note_display_name(vault, new_path),
+        vault.name,
+        links_updated,
+    )
+
+    return {
+        "vault": vault.name,
+        "old_path": old_display,
+        "new_path": _note_display_name(vault, new_path),
+        "links_updated": links_updated,
+        "status": "moved",
+    }
+
+
+def _update_backlinks(
+    vault: VaultMetadata,
+    old_title: str,
+    new_title: str,
+) -> int:
+    """Update wikilinks and markdown links that reference a note.
+
+    Args:
+        vault: Vault metadata.
+        old_title: Previous note identifier (without ``.md``).
+        new_title: New note identifier (without ``.md``).
+
+    Returns:
+        Number of notes that were modified.
+    """
+    wikilink_pattern = re.compile(
+        r"\[\[" + re.escape(old_title) + r"(?P<alias>\|[^\]]+)?\]\]"
+    )
+    markdown_link_pattern = re.compile(
+        r"\[(?P<label>[^\]]+)\]\(" + re.escape(old_title) + r"(?P<ext>\.md)?\)"
+    )
+
+    updated_count = 0
+
+    for note_path in vault.path.rglob("*.md"):
+        if not note_path.is_file():
+            continue
+
+        try:
+            content = note_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Could not read note '%s' while updating backlinks: %s", note_path, exc)
+            continue
+
+        updated_content = content
+        updated_content = wikilink_pattern.sub(
+            lambda match: f"[[{new_title}{match.group('alias') or ''}]]",
+            updated_content,
+        )
+
+        def _markdown_replacer(match: re.Match[str]) -> str:
+            ext = match.group("ext") or ""
+            return f"[{match.group('label')}]({new_title}{ext})"
+
+        updated_content = markdown_link_pattern.sub(_markdown_replacer, updated_content)
+
+        if updated_content != content:
+            try:
+                note_path.write_text(updated_content, encoding="utf-8")
+                updated_count += 1
+            except OSError as exc:
+                logger.warning(
+                    "Failed to write updated backlinks to '%s': %s",
+                    note_path,
+                    exc,
+                )
+
+    return updated_count
+
+
+def list_notes(vault: VaultMetadata, include_metadata: bool = False) -> dict[str, Any]:
     """List all note titles in the Obsidian vault.
 
     Args:
         vault: Vault metadata.
+        include_metadata: When ``True`` each entry contains metadata (modified, created,
+            size). Otherwise, only normalized note paths are returned.
 
     Returns:
-        A dictionary containing the vault name and a sorted list of normalized note identifiers.
+        A dictionary containing the vault name and note list. Notes are sorted
+        alphabetically when metadata is excluded, or by most recent modification when
+        metadata is included.
     """
     _ensure_vault_ready(vault)
-    markdown_files = [
-        path.relative_to(vault.path).with_suffix("")
-        for path in vault.path.rglob("*.md")
-        if path.is_file()
-    ]
 
-    notes = sorted(str(note.as_posix()) for note in markdown_files)
+    notes: list[Any] = []
+    for path in vault.path.rglob("*.md"):
+        if not path.is_file():
+            continue
+
+        relative = path.relative_to(vault.path).with_suffix("")
+        if include_metadata:
+            metadata = _get_note_metadata(path)
+            metadata["path"] = relative.as_posix()
+            notes.append(metadata)
+        else:
+            notes.append(relative.as_posix())
+
+    if include_metadata:
+        notes.sort(key=lambda item: item["modified"], reverse=True)
+    else:
+        notes.sort()
+
     return {
         "vault": vault.name,
         "notes": notes,
     }
 
 
-def search_notes(query: str, vault: VaultMetadata) -> dict[str, Any]:
+def search_notes(
+    query: str,
+    vault: VaultMetadata,
+    include_metadata: bool = False,
+    sort_by: Optional[str] = None,
+) -> dict[str, Any]:
     """Search within the vault's note identifiers for the provided query.
 
     Args:
         query: Case-insensitive substring to match against note identifiers.
         vault: Vault metadata.
+        include_metadata: When ``True`` include metadata for each match.
+        sort_by: Optional sort column when metadata is included (``"modified"``,
+            ``"created"``, ``"size"``, ``"name"``). Defaults to modification time when
+            metadata is included, or alphabetical order otherwise.
 
     Returns:
         A dictionary containing the vault name, original query, and matching identifiers.
     """
-    listing = list_notes(vault)
+    listing = list_notes(vault, include_metadata=include_metadata)
     query_lower = query.lower()
-    matches = [note for note in listing["notes"] if query_lower in note.lower()]
+
+    if include_metadata:
+        matches = [
+            note for note in listing["notes"] if query_lower in note["path"].lower()
+        ]
+
+        sort_key = (sort_by or "modified").lower()
+        if sort_key == "modified":
+            matches.sort(key=lambda item: item["modified"], reverse=True)
+        elif sort_key == "created":
+            matches.sort(
+                key=lambda item: item.get("created", ""),
+                reverse=True,
+            )
+        elif sort_key == "size":
+            matches.sort(key=lambda item: item["size"], reverse=True)
+        else:
+            matches.sort(key=lambda item: item["path"])
+    else:
+        matches = [
+            note for note in listing["notes"] if query_lower in note.lower()
+        ]
+
     return {
         "vault": vault.name,
         "query": query,
@@ -998,6 +1231,73 @@ def search_note_content(query: str, vault: VaultMetadata) -> dict[str, Any]:
         "vault": vault.name,
         "query": trimmed_query,
         "results": results[:10],
+    }
+
+
+def list_notes_in_folder_core(
+    vault: VaultMetadata,
+    folder_path: str,
+    recursive: bool = False,
+    include_metadata: bool = True,
+    sort_by: str = "modified",
+) -> dict[str, Any]:
+    """List notes within a specific vault folder with optional metadata.
+
+    Args:
+        vault: Vault metadata.
+        folder_path: Folder path relative to the vault root.
+        recursive: When ``True`` include notes in subdirectories.
+        include_metadata: When ``True`` return metadata for each note; otherwise only paths.
+        sort_by: Sort column when metadata is included (``"modified"``, ``"created"``,
+            ``"size"``, ``"name"``). Defaults to ``"modified"``.
+
+    Returns:
+        A dictionary containing the vault name, requested folder path, and list of notes.
+
+    Raises:
+        ValueError: If the folder does not exist or escapes the vault root.
+    """
+    _ensure_vault_ready(vault)
+    target_folder = _resolve_folder_path(vault, folder_path)
+
+    if not target_folder.is_dir():
+        raise ValueError(f"Folder '{folder_path}' not found in vault '{vault.name}'.")
+
+    pattern = "**/*.md" if recursive else "*.md"
+    notes: list[Any] = []
+
+    for path in target_folder.glob(pattern):
+        if not path.is_file():
+            continue
+
+        relative = path.relative_to(vault.path).with_suffix("")
+        if include_metadata:
+            metadata = _get_note_metadata(path)
+            metadata["path"] = relative.as_posix()
+            notes.append(metadata)
+        else:
+            notes.append(relative.as_posix())
+
+    if include_metadata:
+        sort_key = (sort_by or "modified").lower()
+        if sort_key == "modified":
+            notes.sort(key=lambda item: item["modified"], reverse=True)
+        elif sort_key == "created":
+            notes.sort(
+                key=lambda item: item.get("created", ""),
+                reverse=True,
+            )
+        elif sort_key == "size":
+            notes.sort(key=lambda item: item["size"], reverse=True)
+        else:
+            notes.sort(key=lambda item: item["path"])
+    else:
+        notes.sort()
+
+    return {
+        "vault": vault.name,
+        "folder": folder_path,
+        "notes": notes,
     }
 
 # MCP tools
@@ -1095,76 +1395,158 @@ async def set_active_vault(vault: str, ctx: Context) -> dict[str, Any]:
 @mcp.tool()
 async def list_obsidian_notes(
     vault: Optional[str] = None,
+    include_metadata: bool = False,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """List ALL notes in vault (complete inventory, high token cost).
+    """List ALL notes in vault (complete inventory).
     
-    Returns every note path in the vault as a sorted flat list. For large
-    vaults (100+ notes), this consumes 1000+ tokens. Use search_obsidian_notes()
-    for filtered results instead.
+    Returns every note path in the vault. For large vaults (100+ notes),
+    use search_obsidian_notes() for filtered results.
     
     Args:
         vault (str, optional): Vault name (omit to use active vault)
+        include_metadata (bool): If True, include modified/created/size info
     
-    Returns:
+    Returns (without metadata):
+        {"vault": str, "notes": [str, ...]}
+    
+    Returns (with metadata):
         {
             "vault": str,
-            "notes": [str, ...]  # Paths without .md, forward-slash separated
+            "notes": [
+                {
+                    "path": str,
+                    "modified": str,  # ISO timestamp
+                    "created": str,   # ISO timestamp
+                    "size": int       # Bytes
+                },
+                ...
+            ]
         }
     
-    Token Cost: Small vault (10 notes) ~200 tokens, Large vault (200 notes) ~2000+ tokens
+    Token Cost: 
+        - Without metadata: 200-2000 tokens (vault size dependent)
+        - With metadata: 300-5800 tokens (add ~9 tokens per note)
     
     Examples:
-        - Use when: Need complete vault overview, vault is small (<50 notes)
-        - Don't use: Looking for specific notes → Use search_obsidian_notes("query")
-        - Don't use: Need timestamps/metadata → Coming in future version
-        - Don't use: Large vault → Use search_obsidian_notes() to filter first
-    
-    Error Handling:
-        - Vault not accessible → Error with vault path, use list_vaults()
-        - Empty vault → Returns {"vault": "...", "notes": []}
+        - Use when: Need complete vault overview
+        - Use include_metadata=True: When need to find recent/large notes
+        - Use include_metadata=False: When just browsing note list
     """
     metadata = resolve_vault(vault, ctx)
-    return list_notes(metadata)
+    return list_notes(metadata, include_metadata=include_metadata)
 
-# Performs case-insensitive substring matching across note identifiers.
+# Performs case-insensitive substring matching across note identifiers. Supports
+# optional metadata payloads and sorting when ``include_metadata`` is ``True``.
 @mcp.tool()
 async def search_obsidian_notes(
     query: str,
     vault: Optional[str] = None,
+    include_metadata: bool = False,
+    sort_by: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Find notes matching search pattern (efficient, token-optimized).
     
     Case-insensitive substring search across note paths/titles. Returns only
-    matching notes, making this 70-90% more token-efficient than listing all
-    notes when you have search criteria.
+    matching notes.
     
     Args:
         query (str): Search string (case-insensitive)
             Examples: "Mental Health", "2025", "Project"
-            Searches full path including folders
         vault (str, optional): Vault name (omit to use active vault)
+        include_metadata (bool): If True, include file metadata
+        sort_by (str, optional): Sort by "modified", "created", "size", or "name"
+            Default: "name" without metadata, "modified" with metadata
     
-    Returns:
+    Returns (without metadata):
         {"vault": str, "query": str, "matches": [str, ...]}
     
-    Token Cost: ~200-500 tokens (scales with matches, not vault size)
+    Returns (with metadata):
+        {
+            "vault": str,
+            "query": str,
+            "matches": [
+                {"path": str, "modified": str, "created": str, "size": int},
+                ...
+            ]
+        }
+    
+    Token Cost:
+        - Without metadata: ~200-500 tokens
+        - With metadata: ~250-1400 tokens (add ~9 tokens per match)
     
     Examples:
         - Use when: Looking for notes in folder → query="Mental Health"
-        - Use when: Finding notes with keywords → query="2025"
-        - Use FIRST before list_obsidian_notes() to avoid unnecessary tokens
-        - Don't use: Searching note content → Use search_obsidian_content()
-        - Don't use: Need metadata (timestamps, size) → Coming in future version
+        - Use include_metadata=True: To find most recent note in folder
+        - Use sort_by="modified": To get chronologically ordered results
+        - Don't use: For content search → Use search_obsidian_content()
+    """    
+    metadata = resolve_vault(vault, ctx)
+    return search_notes(
+        query,
+        metadata,
+        include_metadata=include_metadata,
+        sort_by=sort_by,
+    )
+
+# Searches note contents and returns up to 10 files, each with a match count and up to
+# three 200-character snippets. Designed for token-efficient previews.
+# Provides targeted folder listings to avoid large vault scans. Defaults to
+# returning metadata sorted by latest modification time.
+@mcp.tool()
+async def list_notes_in_folder(
+    folder_path: str,
+    vault: Optional[str] = None,
+    recursive: bool = False,
+    include_metadata: bool = True,
+    sort_by: str = "modified",
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """List notes in a specific folder (token-efficient, targeted).
+    
+    More efficient than list_obsidian_notes() when you know the folder.
+    Returns only notes in specified folder, sorted by your preference.
+    
+    Args:
+        folder_path (str): Folder relative to vault root
+            Examples: "Mental Health", "Projects/Tech", "Daily Notes"
+        vault (str, optional): Vault name (omit to use active vault)
+        recursive (bool): If True, include subfolders (default: False)
+        include_metadata (bool): Include file metadata (default: True)
+        sort_by (str): Sort by "modified", "created", "size", "name"
+            Default: "modified" (most recent first)
+    
+    Returns:
+        {
+            "vault": str,
+            "folder": str,
+            "notes": [
+                {"path": str, "modified": str, "created": str, "size": int},
+                ...
+            ]
+        }
+    
+    Token Cost: ~250-800 tokens (scales with folder size, not vault size)
+    
+    Examples:
+        - Use when: Finding notes in specific folder
+        - Use when: Need most recent note in folder
+        - Use sort_by="modified": Get chronological order (newest first)
+        - Don't use: Searching across vault → Use search_obsidian_notes()
     
     Error Handling:
-        - Empty query → Error: "Search query cannot be empty"
-        - No matches → Returns {"matches": []}
-        - Vault not accessible → Error with vault path
-    """
+        - Folder not found → Error with folder path
+        - Empty folder → Returns {"notes": []}
+    """    
     metadata = resolve_vault(vault, ctx)
-    return search_notes(query, metadata)
+    return list_notes_in_folder_core(
+        metadata,
+        folder_path=folder_path,
+        recursive=recursive,
+        include_metadata=include_metadata,
+        sort_by=sort_by,
+    )
 
 # Searches note contents and returns up to 10 files, each with a match count and up to
 # three 200-character snippets. Designed for token-efficient previews.
@@ -1315,6 +1697,57 @@ async def create_obsidian_note(
 # ==============================================================================
 # UPDATE OPERATIONS
 # ==============================================================================
+
+# Moves or renames a note and optionally updates backlinks to preserve consistency.
+@mcp.tool()
+async def move_obsidian_note(
+    old_title: str,
+    new_title: str,
+    update_links: bool = True,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Move or rename a note, optionally updating backlinks.
+    
+    Moves a note to a new location and/or renames it. Can optionally update
+    all wikilinks ([[link]]) and markdown links ([](link)) that reference
+    the old path.
+    
+    Args:
+        old_title (str): Current note path (without .md)
+            Example: "Mental Health/Old Name"
+        new_title (str): New note path (without .md)
+            Examples: 
+                "Mental Health/New Name" (rename only)
+                "Archive/Old Name" (move only)
+                "Archive/New Name" (move and rename)
+        update_links (bool): If True, update all backlinks to this note
+            Default: True (recommended for vault consistency)
+        vault (str, optional): Vault name (omit to use active vault)
+    
+    Returns:
+        {
+            "vault": str,
+            "old_path": str,
+            "new_path": str,
+            "links_updated": int,  # Number of notes with updated links
+            "status": "moved"
+        }
+    
+    Examples:
+        - Use when: Renaming note to fix typo
+        - Use when: Moving note to different folder
+        - Use when: Reorganizing vault structure
+        - Use update_links=False: Only if you manage links manually
+        - Don't use: For simple content edits (use replace_obsidian_note)
+    
+    Error Handling:
+        - Old note not found → Error with path
+        - New note already exists → Error: "Note already exists at new location"
+        - Invalid paths → Error describing issue
+    """    
+    metadata = resolve_vault(vault, ctx)
+    return move_note(old_title, new_title, metadata, update_links=update_links)
 
 # Replaces the entire file contents. The response includes ``status: "replaced"``.
 @mcp.tool()

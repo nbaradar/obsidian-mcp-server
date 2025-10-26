@@ -152,6 +152,9 @@ Claude: [uses replace_section_obsidian_note]
 
 User: "Add a summary paragraph at the end of 'Project Updates' before any subsections"
 Claude: [uses append_to_section_obsidian_note]
+
+User: "What’s the most recent note in my Mental Health folder?"
+Claude: [uses list_notes_in_folder("Mental Health", include_metadata=True, sort_by="modified")]
 ```
 
 ---
@@ -173,6 +176,7 @@ Claude: [uses append_to_section_obsidian_note]
 | `append_to_obsidian_note` | Add content to end |
 | `prepend_to_obsidian_note` | Add content to beginning |
 | `delete_obsidian_note` | Remove file |
+| `move_obsidian_note` | Move or rename note (optional backlink updates) |
 
 ### **Structured Editing**
 | Tool | Purpose |
@@ -185,9 +189,15 @@ Claude: [uses append_to_section_obsidian_note]
 ### **Discovery**
 | Tool | Purpose |
 |------|---------|
-| `list_obsidian_notes` | List all notes in vault |
-| `search_obsidian_notes` | Search note titles |
+| `list_obsidian_notes` | List all notes, optionally include metadata |
+| `search_obsidian_notes` | Search note titles (supports metadata + sorting) |
+| `list_notes_in_folder` | Targeted folder listing (metadata + recursion support) |
 | `search_obsidian_content` | Token-efficient content search |
+
+> **Metadata on demand:** `list_obsidian_notes`, `search_obsidian_notes`, and `list_notes_in_folder`
+> accept `include_metadata=True` to attach ISO timestamps and file sizes. The flag adds roughly
+> 9 tokens per note, so keep it off for broad listings and enable it when you need “most recent”
+> or “largest note” style queries.
 
 ---
 
