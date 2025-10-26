@@ -47,9 +47,10 @@ Notes — Structured inserts & sections
 4. `delete_section_obsidian_note` — Remove a heading and its section (up to the next heading of equal or higher level).
 
 Notes — Discovery & search
-1. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
-2. `search_obsidian_notes` — Shallow search against note identifiers (not file contents yet).
-3. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
+1. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault; accepts `include_metadata` to attach modified/created/size (adds ~9 tokens per note).
+2. `search_obsidian_notes` — Token-efficient substring search across note identifiers with optional metadata and sorting controls (`sort_by` supporting `modified/created/size/name`).
+3. `list_notes_in_folder` — Folder-targeted listing with optional recursion and metadata; ideal for "most recent note in X" queries without scanning the entire vault.
+4. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
 
 Each tool’s docstring includes UX hints explicitly telling Claude Desktop to use `list_vaults` for discovery and that omitting `vault` defers to the active or default vault. This dramatically improves agent behavior: Claude can respond to requests like “update my work vault” by first setting the vault, then calling note helpers without needing to restate the name every time.
 
