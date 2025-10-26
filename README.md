@@ -111,7 +111,7 @@ vaults:
 
 3. **Restart Claude Desktop**
 
-You should see your Obsidian tools available in the Claude for Desktop Tools menu (Small button with 2 knobs under the search bar)
+You should see "🔌 MCP" in Claude Desktop with your Obsidian tools available.
 
 ---
 
