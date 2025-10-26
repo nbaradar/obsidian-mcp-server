@@ -224,9 +224,14 @@ Claude can switch between vaults mid-conversation without losing state.
 - [x] **v1.0** — Core CRUD operations
 - [x] **v1.1** — Token-efficient content search
 - [x] **v1.2** — Structured heading-based editing
-- [ ] **v1.3** — YAML frontmatter manipulation
-- [ ] **v1.4** — Automated tagging based on content
+- [x] **v1.3** — Improve Vault Navigation
+- [ ] **v1.4** — Frontmatter Manipulation
+- [ ] **v1.4.1** - Tagging Automation / Search updates
+- [ ] **v1.5** — Pydantic Data Models for Input Validation
+- [ ] **v1.6** — Vault-Aware Prompt Resources
+- [ ] **v1.6.1** — Vault-Specific Templates
 - [ ] **v2.0** — HTTP transport for remote access
+
 
 See [`AGENTS.md`](./AGENTS.md) for detailed development notes and architecture decisions.
 
