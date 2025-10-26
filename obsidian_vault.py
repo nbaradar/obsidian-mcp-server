@@ -1,3 +1,11 @@
+"""Obsidian Vault MCP Server
+
+Exposes multi-vault Obsidian note management via MCP tools.
+Supports CRUD operations, structured heading-based edits, and token-efficient search.
+
+Security: All operations are sandboxed within configured vaults (see vaults.yaml).
+Session state: Active vault selection persists per MCP connection.
+"""
 from __future__ import annotations
 
 import logging
@@ -38,7 +46,11 @@ class VaultMetadata:
 
 
 class VaultConfiguration:
-    """Holds vault metadata and default resolution helpers."""
+    """Holds vault metadata and default resolution helpers.
+
+    Loaded once at module initialization from vaults.yaml.
+    Provides vault lookup by name and payload serialization for MCP responses.
+    """
 
     def __init__(self, default_vault: str, vaults: dict[str, VaultMetadata]) -> None:
         self.default_vault = default_vault
@@ -58,7 +70,21 @@ class VaultConfiguration:
 
 
 def _load_vaults_config(config_path: Path = CONFIG_PATH) -> VaultConfiguration:
-    """Load the vault configuration from disk."""
+    """Load and validate the vault configuration file.
+
+    Args:
+        config_path: Path to the YAML configuration file. Defaults to ``vaults.yaml``
+        next to this module.
+
+    Returns:
+        A fully populated :class:`VaultConfiguration` containing normalized vault
+        metadata and the configured default vault name.
+
+    Raises:
+        FileNotFoundError: If the configuration file is missing.
+        ValueError: If the file exists but does not provide the expected structure
+            (missing default, empty mapping, invalid entries, etc.).
+    """
     if not config_path.exists():
         raise FileNotFoundError(f"Vault configuration file not found at {config_path}")
 
@@ -105,25 +131,65 @@ ACTIVE_VAULTS: Dict[int, str] = {}
 
 
 def _session_key(ctx: Context) -> int:
-    """Produce a stable per-session key for active vault tracking."""
+    """Produce a stable per-session key for active vault tracking.
+
+    Args:
+        ctx: The request context supplied by FastMCP.
+
+    Returns:
+        An integer derived from the underlying session object identity. This value
+        remains stable for the lifetime of the MCP session and is suitable as a
+        dictionary key.
+    """
     return id(ctx.session)
 
 
 def set_active_vault_for_session(ctx: Context, vault_name: str) -> VaultMetadata:
-    """Set the active vault for the given session."""
+    """Set the active vault for a client session.
+
+    Args:
+        ctx: The request context supplied by FastMCP.
+        vault_name: Friendly vault name as defined in ``vaults.yaml``.
+
+    Returns:
+        The :class:`VaultMetadata` associated with ``vault_name``.
+
+    Raises:
+        ValueError: If ``vault_name`` is not present in the allow list.
+    """
     metadata = VAULT_CONFIGURATION.get(vault_name)
     ACTIVE_VAULTS[_session_key(ctx)] = metadata.name
     return metadata
 
 
 def get_active_vault_for_session(ctx: Context) -> VaultMetadata:
-    """Retrieve the active vault for the session, falling back to the default."""
+    """Retrieve the active vault for a session, falling back to the default.
+
+    Args:
+        ctx: The request context supplied by FastMCP.
+
+    Returns:
+        The :class:`VaultMetadata` representing the currently selected vault, or the
+        configuration default if the session has not yet selected one.
+    """
     vault_name = ACTIVE_VAULTS.get(_session_key(ctx), VAULT_CONFIGURATION.default_vault)
     return VAULT_CONFIGURATION.get(vault_name)
 
 
 def resolve_vault(vault: Optional[str], ctx: Optional[Context] = None) -> VaultMetadata:
-    """Resolve which vault metadata should be used for an operation."""
+    """Resolve which vault metadata should be used for an operation.
+
+    Args:
+        vault: Optional friendly vault name provided directly by the caller.
+        ctx: Optional FastMCP context used to infer the active vault when ``vault``
+            is not supplied.
+
+    Returns:
+        The resolved :class:`VaultMetadata`.
+
+    Raises:
+        ValueError: If the supplied ``vault`` name is not recognized.
+    """
     if vault:
         return VAULT_CONFIGURATION.get(vault)
 
@@ -133,13 +199,32 @@ def resolve_vault(vault: Optional[str], ctx: Optional[Context] = None) -> VaultM
     return VAULT_CONFIGURATION.get(VAULT_CONFIGURATION.default_vault)
 
 def _ensure_vault_ready(vault: VaultMetadata) -> None:
-    """Ensure the target vault directory is available before performing operations."""
+    """Ensure the target vault directory is accessible before performing operations.
+
+    Args:
+        vault: Metadata describing the vault to use.
+
+    Raises:
+        FileNotFoundError: If the vault path does not exist or is not a directory.
+    """
     if not vault.path.is_dir():
         raise FileNotFoundError(f"Vault '{vault.name}' is not accessible at {vault.path}")
 
 
 def _normalize_note_identifier(identifier: str) -> Path:
-    """Normalize user-provided note identifiers to a safe relative markdown path."""
+    """Normalize user-provided note identifiers to a safe, relative markdown path.
+
+    Args:
+        identifier: Note identifier supplied by the caller. May include relative
+            folder segments or the ``.md`` suffix.
+
+    Returns:
+        A :class:`Path` pointing to the markdown file within the vault (relative).
+
+    Raises:
+        ValueError: If the identifier is empty, contains reserved path segments, or
+            resolves outside of the vault namespace.
+    """
     cleaned = identifier.strip()
     if not cleaned:
         raise ValueError("Note title cannot be empty.")
@@ -161,7 +246,18 @@ def _normalize_note_identifier(identifier: str) -> Path:
 
 
 def _resolve_note_path(vault: VaultMetadata, title: str) -> Path:
-    """Resolve a note title to an absolute path within the vault, enforcing sandbox rules."""
+    """Resolve a note title to an absolute vault path, enforcing sandbox rules.
+
+    Args:
+        vault: Vault metadata.
+        title: Note identifier in user-facing form.
+
+    Returns:
+        The absolute :class:`Path` to the note inside ``vault``.
+
+    Raises:
+        ValueError: If the computed path would escape the vault root.
+    """
     relative = _normalize_note_identifier(title)
     candidate = (vault.path / relative).resolve(strict=False)
     vault_root = vault.path.resolve(strict=False)
@@ -171,13 +267,29 @@ def _resolve_note_path(vault: VaultMetadata, title: str) -> Path:
 
 
 def _note_display_name(vault: VaultMetadata, path: Path) -> str:
-    """Convert a note path into a normalized display name without extension."""
+    """Convert a note path into a normalized display name without extension.
+
+    Args:
+        vault: Vault metadata.
+        path: Absolute path to the note within the vault.
+
+    Returns:
+        A forward-slash separated string suitable for UI display.
+    """
     relative = path.relative_to(vault.path).with_suffix("")
     return relative.as_posix()
 
 
 def _combine_with_newline(left: str, right: str) -> str:
-    """Concatenate two strings, inserting a newline between them when needed."""
+    """Concatenate two strings, inserting a single newline between them when needed.
+
+    Args:
+        left: Existing text.
+        right: Text to append.
+
+    Returns:
+        The combined text with at most one newline separating the segments.
+    """
     if not left:
         return right
     if not right:
@@ -196,7 +308,16 @@ def _normalize_heading_key(value: str) -> str:
 
 
 def _parse_headings(text: str) -> list[dict[str, Any]]:
-    """Return a list of headings with positional metadata."""
+    """Return a list of markdown headings with positional metadata.
+
+    Args:
+        text: Full markdown document contents.
+
+    Returns:
+        A list of dictionaries describing each heading. Each dictionary contains the
+        heading level, original title, a normalized lookup key, and byte offsets for
+        the heading line.
+    """
     headings: list[dict[str, Any]] = []
     for match in HEADING_PATTERN.finditer(text):
         start = match.start()
@@ -222,7 +343,21 @@ def _parse_headings(text: str) -> list[dict[str, Any]]:
 
 
 def _locate_heading(text: str, heading: str) -> tuple[dict[str, Any], int, list[dict[str, Any]]]:
-    """Find a heading within the given text, returning metadata and position index."""
+    """Find a heading within text, returning metadata and the heading list.
+
+    Args:
+        text: Full markdown document contents.
+        heading: Heading title to match (case-insensitive, leading ``#`` not required).
+
+    Returns:
+        A tuple of ``(match_metadata, index, headings)`` where ``match_metadata`` is
+        the dictionary describing the located heading, ``index`` is its position
+        within the heading list, and ``headings`` is the full list returned by
+        :func:`_parse_headings`.
+
+    Raises:
+        ValueError: If no matching heading is found.
+    """
     headings = _parse_headings(text)
     normalized_target = _normalize_heading_key(heading)
     for index, info in enumerate(headings):
@@ -232,7 +367,19 @@ def _locate_heading(text: str, heading: str) -> tuple[dict[str, Any], int, list[
 
 
 def _section_bounds(headings: list[dict[str, Any]], index: int, text_length: int) -> tuple[int, int]:
-    """Compute the content boundaries for the heading's section."""
+    """Compute the byte offsets for the content belonging to a heading.
+
+    Args:
+        headings: Full heading list for the document.
+        index: Index into ``headings`` of the heading of interest.
+        text_length: Length of the document string.
+
+    Returns:
+        A two-element tuple ``(start, end)`` representing the byte offsets that
+        bracket the section content for the heading at ``index``. The start offset
+        is immediately after the heading line; the end offset is either the next
+        heading of equal or higher level, or the end of the document.
+    """
     current = headings[index]
     section_start = current["end"]
     for subsequent in headings[index + 1 :]:
@@ -242,7 +389,22 @@ def _section_bounds(headings: list[dict[str, Any]], index: int, text_length: int
 
 
 def create_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Create a markdown note with the given title and content."""
+    """Create a markdown note with the given title and content.
+
+    Args:
+        title: Human-friendly note identifier; folders can be expressed with ``/``.
+        content: Markdown body to write into the new file.
+        vault: Vault metadata describing where the note should reside.
+
+    Returns:
+        A dictionary describing the created note (vault name, note identifier, full
+        path, and status).
+
+    Raises:
+        FileExistsError: If the note already exists.
+        FileNotFoundError: If the vault directory is missing.
+        ValueError: If ``title`` fails normalization (e.g., traversal attempt).
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -263,7 +425,18 @@ def create_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any
 
 
 def retrieve_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Retrieve the content of a markdown note with the given title."""
+    """Retrieve the content of a markdown note.
+
+    Args:
+        title: Note identifier.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary containing vault metadata plus the raw note content.
+
+    Raises:
+        FileNotFoundError: If the note cannot be located.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -281,7 +454,19 @@ def retrieve_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
 
 
 def replace_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Replace the entire content of an existing markdown note."""
+    """Replace the entire content of an existing markdown note.
+
+    Args:
+        title: Note identifier.
+        content: New markdown body that will replace the previous contents.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the updated note.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -300,7 +485,19 @@ def replace_note(title: str, content: str, vault: VaultMetadata) -> dict[str, An
 
 
 def append_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Append content to the end of a markdown note."""
+    """Append content to the end of a markdown note.
+
+    Args:
+        title: Note identifier.
+        content: Markdown fragment to append.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the resulting note.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -321,7 +518,19 @@ def append_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any
 
 
 def prepend_note(title: str, content: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Prepend content to the beginning of a markdown note."""
+    """Prepend content to the beginning of a markdown note.
+
+    Args:
+        title: Note identifier.
+        content: Markdown fragment to insert before the current body.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the resulting note.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -347,7 +556,21 @@ def insert_after_heading(
     heading: str,
     vault: VaultMetadata,
 ) -> dict[str, Any]:
-    """Insert content immediately after the specified heading."""
+    """Insert content immediately after the specified heading.
+
+    Args:
+        title: Note identifier.
+        content: Markdown fragment to insert after the heading line.
+        heading: Heading text (case-insensitive, without ``#`` markers).
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary with vault information, note name, heading, and operation status.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+        ValueError: If the heading cannot be located.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -400,11 +623,19 @@ def append_to_section(
     vault: VaultMetadata,
 ) -> dict[str, Any]:
     """Append content to the end of a heading's direct section content.
-        
-    The appended content is inserted at the end of the section's direct content,
-    before any subsections. Spacing is normalized to ensure:
-    - One newline separates the appended content from existing content
-    - One newline separates the appended content from following sections
+
+    Args:
+        title: Note identifier.
+        content: Markdown fragment to append within the section.
+        heading: Heading text (case-insensitive, without ``#`` markers).
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the updated note and the target heading.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+        ValueError: If the heading cannot be located.
     """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
@@ -442,11 +673,16 @@ def append_to_section(
 
     # Ensure there is a newline between existing section body and the appended content.
     if section_body:
-        if not section_body.endswith("\n"):
-            insertion = "\n" + insertion
+        if section_body.endswith("\n\n"):
+            insertion = insertion.lstrip("\n")
+        elif section_body.endswith("\n"):
+            if not insertion.startswith("\n"):
+                insertion = "\n" + insertion
+        else:
+            insertion = "\n\n" + insertion.lstrip("\n")
     else:
         if not before.endswith("\n"):
-            insertion = "\n" + insertion
+            insertion = "\n" + insertion.lstrip("\n")
 
     has_following_content = bool(after)
 
@@ -483,7 +719,21 @@ def replace_section(
     heading: str,
     vault: VaultMetadata,
 ) -> dict[str, Any]:
-    """Replace the content under a heading (until the next heading of same or higher level)."""
+    """Replace the content under a heading until the next heading of equal or higher level.
+
+    Args:
+        title: Note identifier.
+        content: Replacement markdown for the section body.
+        heading: Heading text (case-insensitive, without ``#`` markers).
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the updated note and target heading.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+        ValueError: If the heading cannot be located.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -540,7 +790,20 @@ def delete_section(
     heading: str,
     vault: VaultMetadata,
 ) -> dict[str, Any]:
-    """Delete a heading and its section content."""
+    """Delete a heading and the content belonging to that section.
+
+    Args:
+        title: Note identifier.
+        heading: Heading text (case-insensitive, without ``#`` markers).
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary describing the updated note and removed heading.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+        ValueError: If the heading cannot be located.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -581,7 +844,18 @@ def delete_section(
 
 
 def delete_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Delete a markdown note with the given title."""
+    """Delete a markdown note with the given title.
+
+    Args:
+        title: Note identifier.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary summarizing the deletion.
+
+    Raises:
+        FileNotFoundError: If the note does not exist.
+    """
     _ensure_vault_ready(vault)
     target_path = _resolve_note_path(vault, title)
     if not target_path.is_file():
@@ -600,7 +874,14 @@ def delete_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
 
 
 def list_notes(vault: VaultMetadata) -> dict[str, Any]:
-    """List all note titles in the Obsidian vault."""
+    """List all note titles in the Obsidian vault.
+
+    Args:
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary containing the vault name and a sorted list of normalized note identifiers.
+    """
     _ensure_vault_ready(vault)
     markdown_files = [
         path.relative_to(vault.path).with_suffix("")
@@ -616,7 +897,15 @@ def list_notes(vault: VaultMetadata) -> dict[str, Any]:
 
 
 def search_notes(query: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Search within the vault's note names for the provided query."""
+    """Search within the vault's note identifiers for the provided query.
+
+    Args:
+        query: Case-insensitive substring to match against note identifiers.
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary containing the vault name, original query, and matching identifiers.
+    """
     listing = list_notes(vault)
     query_lower = query.lower()
     matches = [note for note in listing["notes"] if query_lower in note.lower()]
@@ -628,7 +917,19 @@ def search_notes(query: str, vault: VaultMetadata) -> dict[str, Any]:
 
 
 def search_note_content(query: str, vault: VaultMetadata) -> dict[str, Any]:
-    """Search note file contents for the query and return bounded snippets."""
+    """Search note file contents for the query and return bounded snippets.
+
+    Args:
+        query: Search string (case-insensitive).
+        vault: Vault metadata.
+
+    Returns:
+        A dictionary containing the normalized query along with a list of match payloads.
+        Each payload includes the vault-relative path, a match count, and up to three snippets.
+
+    Raises:
+        ValueError: If the query is empty or whitespace.
+    """
     _ensure_vault_ready(vault)
 
     trimmed_query = query.strip()
@@ -700,6 +1001,8 @@ def search_note_content(query: str, vault: VaultMetadata) -> dict[str, Any]:
     }
 
 # MCP tools
+# Returns ``{"default", "active", "vaults"}``. ``ctx`` may be omitted when called outside
+# a request (e.g., CLI).
 @mcp.tool()
 async def list_vaults(ctx: Context | None = None) -> dict[str, Any]:
     """List configured Obsidian vaults and connection defaults. Use this to discover valid vault names."""
@@ -717,6 +1020,8 @@ async def list_vaults(ctx: Context | None = None) -> dict[str, Any]:
     }
 
 
+# Expects a friendly vault name defined in ``vaults.yaml``. Response mirrors
+# ``list_vaults`` payloads so callers can confirm the active vault.
 @mcp.tool()
 async def set_active_vault(vault: str, ctx: Context) -> dict[str, Any]:
     """Set the active vault for this connection. Use `list_vaults` to discover valid names."""
@@ -729,6 +1034,8 @@ async def set_active_vault(vault: str, ctx: Context) -> dict[str, Any]:
     }
 
 
+# Creates a new markdown file. ``vault`` defaults to the active session; result is
+# ``{"vault", "note", "path", "status"}``.
 @mcp.tool()
 async def create_obsidian_note(
     title: str,
@@ -736,22 +1043,24 @@ async def create_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Create a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Create a note within the selected vault. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return create_note(title, content, metadata)
 
 
+# Returns the full markdown body along with metadata. Errors if the note is missing.
 @mcp.tool()
 async def retrieve_obsidian_note(
     title: str,
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Retrieve a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Retrieve a note's full contents. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return retrieve_note(title, metadata)
 
 
+# Replaces the entire file contents. The response includes ``status: "replaced"``.
 @mcp.tool()
 async def replace_obsidian_note(
     title: str,
@@ -764,6 +1073,7 @@ async def replace_obsidian_note(
     return replace_note(title, content, metadata)
 
 
+# Appends raw markdown to the end of a note, auto-inserting a newline when needed.
 @mcp.tool()
 async def append_to_obsidian_note(
     title: str,
@@ -771,11 +1081,12 @@ async def append_to_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Append content to a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Append content to the end of a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return append_note(title, content, metadata)
 
 
+# Inserts raw markdown at the start of the file, preserving existing content.
 @mcp.tool()
 async def prepend_to_obsidian_note(
     title: str,
@@ -783,11 +1094,13 @@ async def prepend_to_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Prepend content to a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Prepend content to the start of a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return prepend_note(title, content, metadata)
 
 
+# Inserts immediately after the matching heading (case-insensitive). ``heading`` should
+# omit ``#`` markers. Response echoes the resolved heading title.
 @mcp.tool()
 async def insert_after_heading_obsidian_note(
     title: str,
@@ -796,11 +1109,13 @@ async def insert_after_heading_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Insert content immediately after a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    """Insert content immediately after a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return insert_after_heading(title, content, heading, metadata)
 
 
+# Appends to the end of the heading's direct section content, just before any nested
+# subsections. Response includes ``status: "section_appended"``.
 @mcp.tool()
 async def append_to_section_obsidian_note(
     title: str,
@@ -809,11 +1124,12 @@ async def append_to_section_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Append content to a heading's section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    """Append content to a heading's section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return append_to_section(title, content, heading, metadata)
 
 
+# Replaces the section body beneath a heading until the next equal-or-higher heading.
 @mcp.tool()
 async def replace_section_obsidian_note(
     title: str,
@@ -822,11 +1138,12 @@ async def replace_section_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Replace the content under a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    """Replace the content beneath a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return replace_section(title, content, heading, metadata)
 
 
+# Deletes a heading and its section content. Useful for removing stale blocks.
 @mcp.tool()
 async def delete_section_obsidian_note(
     title: str,
@@ -834,50 +1151,55 @@ async def delete_section_obsidian_note(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Delete a heading and its section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    """Delete a heading and its section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return delete_section(title, heading, metadata)
 
 
+# Removes the markdown file entirely. Response includes the filesystem path for logging.
 @mcp.tool()
 async def delete_obsidian_note(
     title: str,
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Delete a note. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Delete a note from the selected vault. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return delete_note(title, metadata)
 
 
+# Lists normalized note identifiers (folder segments + basename without ``.md``).
 @mcp.tool()
 async def list_obsidian_notes(
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """List notes. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """List notes within the selected vault. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return list_notes(metadata)
 
 
+# Performs case-insensitive substring matching across note identifiers.
 @mcp.tool()
 async def search_obsidian_notes(
     query: str,
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Search note names. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Search note identifiers by substring. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return search_notes(query, metadata)
 
 
+# Searches note contents and returns up to 10 files, each with a match count and up to
+# three 200-character snippets. Designed for token-efficient previews.
 @mcp.tool()
 async def search_obsidian_content(
     query: str,
     vault: Optional[str] = None,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
-    """Search note contents for snippets. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
+    """Search note contents and return contextual snippets. If `vault` is omitted the active vault is used (see `set_active_vault`). Use `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     result = search_note_content(query, metadata)
     logger.info(
