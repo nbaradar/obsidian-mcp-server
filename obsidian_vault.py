@@ -920,6 +920,145 @@ def delete_note(title: str, vault: VaultMetadata) -> dict[str, Any]:
     }
 
 
+def move_note(
+    old_title: str,
+    new_title: str,
+    vault: VaultMetadata,
+    update_links: bool = True,
+) -> dict[str, Any]:
+    """Move or rename a note, optionally updating backlinks across the vault.
+
+    Args:
+        old_title: Current note identifier (without ``.md``).
+        new_title: Desired note identifier (without ``.md``).
+        vault: Vault metadata.
+        update_links: When ``True`` update wikilinks/markdown links referencing the note.
+
+    Returns:
+        A dictionary summarizing the operation outcome, including the number of notes that
+        required backlink adjustments.
+
+    Raises:
+        FileNotFoundError: If the original note cannot be located.
+        FileExistsError: If a note already exists at the new location.
+        ValueError: If either identifier fails sandbox validation.
+    """
+    _ensure_vault_ready(vault)
+    old_path = _resolve_note_path(vault, old_title)
+    new_path = _resolve_note_path(vault, new_title)
+
+    if not old_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, old_path)}' not found in vault '{vault.name}'."
+        )
+
+    if old_path == new_path:
+        links_updated = 0
+        if update_links:
+            links_updated = _update_backlinks(
+                vault,
+                _note_display_name(vault, old_path),
+                _note_display_name(vault, new_path),
+            )
+        return {
+            "vault": vault.name,
+            "old_path": _note_display_name(vault, old_path),
+            "new_path": _note_display_name(vault, new_path),
+            "links_updated": links_updated,
+            "status": "moved",
+        }
+
+    if new_path.exists():
+        raise FileExistsError(
+            f"Note '{_note_display_name(vault, new_path)}' already exists in vault '{vault.name}'."
+        )
+
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+
+    old_display = _note_display_name(vault, old_path)
+    old_path.rename(new_path)
+
+    links_updated = 0
+    if update_links:
+        links_updated = _update_backlinks(vault, old_display, _note_display_name(vault, new_path))
+
+    logger.info(
+        "Moved note from '%s' to '%s' in vault '%s' (%d links updated)",
+        old_display,
+        _note_display_name(vault, new_path),
+        vault.name,
+        links_updated,
+    )
+
+    return {
+        "vault": vault.name,
+        "old_path": old_display,
+        "new_path": _note_display_name(vault, new_path),
+        "links_updated": links_updated,
+        "status": "moved",
+    }
+
+
+def _update_backlinks(
+    vault: VaultMetadata,
+    old_title: str,
+    new_title: str,
+) -> int:
+    """Update wikilinks and markdown links that reference a note.
+
+    Args:
+        vault: Vault metadata.
+        old_title: Previous note identifier (without ``.md``).
+        new_title: New note identifier (without ``.md``).
+
+    Returns:
+        Number of notes that were modified.
+    """
+    wikilink_pattern = re.compile(
+        r"\[\[" + re.escape(old_title) + r"(?P<alias>\|[^\]]+)?\]\]"
+    )
+    markdown_link_pattern = re.compile(
+        r"\[(?P<label>[^\]]+)\]\(" + re.escape(old_title) + r"(?P<ext>\.md)?\)"
+    )
+
+    updated_count = 0
+
+    for note_path in vault.path.rglob("*.md"):
+        if not note_path.is_file():
+            continue
+
+        try:
+            content = note_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Could not read note '%s' while updating backlinks: %s", note_path, exc)
+            continue
+
+        updated_content = content
+        updated_content = wikilink_pattern.sub(
+            lambda match: f"[[{new_title}{match.group('alias') or ''}]]",
+            updated_content,
+        )
+
+        def _markdown_replacer(match: re.Match[str]) -> str:
+            ext = match.group("ext") or ""
+            return f"[{match.group('label')}]({new_title}{ext})"
+
+        updated_content = markdown_link_pattern.sub(_markdown_replacer, updated_content)
+
+        if updated_content != content:
+            try:
+                note_path.write_text(updated_content, encoding="utf-8")
+                updated_count += 1
+            except OSError as exc:
+                logger.warning(
+                    "Failed to write updated backlinks to '%s': %s",
+                    note_path,
+                    exc,
+                )
+
+    return updated_count
+
+
 def list_notes(vault: VaultMetadata, include_metadata: bool = False) -> dict[str, Any]:
     """List all note titles in the Obsidian vault.
 
@@ -1558,6 +1697,57 @@ async def create_obsidian_note(
 # ==============================================================================
 # UPDATE OPERATIONS
 # ==============================================================================
+
+# Moves or renames a note and optionally updates backlinks to preserve consistency.
+@mcp.tool()
+async def move_obsidian_note(
+    old_title: str,
+    new_title: str,
+    update_links: bool = True,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Move or rename a note, optionally updating backlinks.
+    
+    Moves a note to a new location and/or renames it. Can optionally update
+    all wikilinks ([[link]]) and markdown links ([](link)) that reference
+    the old path.
+    
+    Args:
+        old_title (str): Current note path (without .md)
+            Example: "Mental Health/Old Name"
+        new_title (str): New note path (without .md)
+            Examples: 
+                "Mental Health/New Name" (rename only)
+                "Archive/Old Name" (move only)
+                "Archive/New Name" (move and rename)
+        update_links (bool): If True, update all backlinks to this note
+            Default: True (recommended for vault consistency)
+        vault (str, optional): Vault name (omit to use active vault)
+    
+    Returns:
+        {
+            "vault": str,
+            "old_path": str,
+            "new_path": str,
+            "links_updated": int,  # Number of notes with updated links
+            "status": "moved"
+        }
+    
+    Examples:
+        - Use when: Renaming note to fix typo
+        - Use when: Moving note to different folder
+        - Use when: Reorganizing vault structure
+        - Use update_links=False: Only if you manage links manually
+        - Don't use: For simple content edits (use replace_obsidian_note)
+    
+    Error Handling:
+        - Old note not found → Error with path
+        - New note already exists → Error: "Note already exists at new location"
+        - Invalid paths → Error describing issue
+    """    
+    metadata = resolve_vault(vault, ctx)
+    return move_note(old_title, new_title, metadata, update_links=update_links)
 
 # Replaces the entire file contents. The response includes ``status: "replaced"``.
 @mcp.tool()

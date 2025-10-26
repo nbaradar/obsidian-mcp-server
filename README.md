@@ -176,6 +176,7 @@ Claude: [uses list_notes_in_folder("Mental Health", include_metadata=True, sort_
 | `append_to_obsidian_note` | Add content to end |
 | `prepend_to_obsidian_note` | Add content to beginning |
 | `delete_obsidian_note` | Remove file |
+| `move_obsidian_note` | Move or rename note (optional backlink updates) |
 
 ### **Structured Editing**
 | Tool | Purpose |

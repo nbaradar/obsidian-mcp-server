@@ -39,6 +39,7 @@ Notes — Core edits
 4. `append_to_obsidian_note` — Append content to the end of a note, inserting separators when helpful.
 5. `prepend_to_obsidian_note` — Prepend content before the existing body, handling separators automatically.
 6. `delete_obsidian_note` — Remove the note from disk.
+7. `move_obsidian_note` — Rename or relocate a note; optionally updates backlinks across the vault.
 
 Notes — Structured inserts & sections
 1. `insert_after_heading_obsidian_note` — Insert content immediately after a heading (case-insensitive match, supports `#`-style levels).
