@@ -393,6 +393,90 @@ def insert_after_heading(
     }
 
 
+def append_to_section(
+    title: str,
+    content: str,
+    heading: str,
+    vault: VaultMetadata,
+) -> dict[str, Any]:
+    """Append content to the end of a heading's direct section content.
+        
+    The appended content is inserted at the end of the section's direct content,
+    before any subsections. Spacing is normalized to ensure:
+    - One newline separates the appended content from existing content
+    - One newline separates the appended content from following sections
+    """
+    _ensure_vault_ready(vault)
+    target_path = _resolve_note_path(vault, title)
+    if not target_path.is_file():
+        raise FileNotFoundError(
+            f"Note '{_note_display_name(vault, target_path)}' not found in vault '{vault.name}'."
+        )
+
+    text = target_path.read_text(encoding="utf-8")
+    try:
+        heading_info, index, headings = _locate_heading(text, heading)
+    except ValueError as exc:
+        raise ValueError(
+            f"Heading '{heading}' not found in note '{_note_display_name(vault, target_path)}'. "
+            "Use `retrieve_obsidian_note` to inspect the note structure."
+        ) from exc
+
+    next_heading = headings[index + 1] if index + 1 < len(headings) else None
+    insertion_pos = next_heading["start"] if next_heading else len(text)
+
+    section_body = text[heading_info["end"] : insertion_pos]
+    before = text[:insertion_pos]
+    after = text[insertion_pos:]
+
+    insertion = content.rstrip("\r\n")
+    if not insertion:
+        # Nothing to append; return unchanged metadata.
+        return {
+            "vault": vault.name,
+            "note": _note_display_name(vault, target_path),
+            "path": str(target_path),
+            "heading": heading_info["title"],
+            "status": "section_appended",
+        }
+
+    # Ensure there is a newline between existing section body and the appended content.
+    if section_body:
+        if not section_body.endswith("\n"):
+            insertion = "\n" + insertion
+    else:
+        if not before.endswith("\n"):
+            insertion = "\n" + insertion
+
+    has_following_content = bool(after)
+
+    if has_following_content:
+        if not insertion.endswith("\n"):
+            insertion += "\n"
+        if not after.startswith(("\n", "\r")):
+            insertion += "\n"
+    else:
+        if not insertion.endswith("\n"):
+            insertion += "\n"
+
+    updated = before + insertion + after
+    target_path.write_text(updated, encoding="utf-8")
+    note_name = _note_display_name(vault, target_path)
+    logger.info(
+        "Appended content to section '%s' in note '%s' (vault '%s')",
+        heading_info["title"],
+        note_name,
+        vault.name,
+    )
+    return {
+        "vault": vault.name,
+        "note": note_name,
+        "path": str(target_path),
+        "heading": heading_info["title"],
+        "status": "section_appended",
+    }
+
+
 def replace_section(
     title: str,
     content: str,
@@ -419,13 +503,19 @@ def replace_section(
     section_start, section_end = _section_bounds(headings, index, len(text))
     before = text[:section_start]
     after = text[section_end:]
-    replacement = content
+    replacement = content.rstrip("\r\n")
 
-    if replacement:
-        if before and not before.endswith("\n") and not replacement.startswith("\n"):
-            replacement = "\n" + replacement
-        if not replacement.endswith("\n") and after and not after.startswith("\n"):
-            replacement = replacement + "\n"
+    if before and replacement and not before.endswith("\n") and not replacement.startswith("\n"):
+        replacement = "\n" + replacement
+
+    after = after.lstrip("\r\n")
+    has_following_content = bool(after)
+
+    if has_following_content:
+        replacement = replacement.rstrip("\n")
+        replacement = (replacement + "\n\n") if replacement else "\n\n"
+    elif replacement and not replacement.endswith("\n"):
+        replacement = replacement + "\n"
 
     updated = before + replacement + after
     target_path.write_text(updated, encoding="utf-8")
@@ -709,6 +799,19 @@ async def insert_after_heading_obsidian_note(
     """Insert content immediately after a heading (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
     metadata = resolve_vault(vault, ctx)
     return insert_after_heading(title, content, heading, metadata)
+
+
+@mcp.tool()
+async def append_to_section_obsidian_note(
+    title: str,
+    content: str,
+    heading: str,
+    vault: Optional[str] = None,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Append content to a heading's section (case-insensitive). If `vault` is omitted the active vault is used (see `set_active_vault`). Use `retrieve_obsidian_note` to inspect headings and `list_vaults` to discover names."""
+    metadata = resolve_vault(vault, ctx)
+    return append_to_section(title, content, heading, metadata)
 
 
 @mcp.tool()

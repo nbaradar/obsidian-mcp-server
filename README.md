@@ -123,7 +123,7 @@ Once configured, you'll see your Obsidian tools available in Claude Desktop:
 ![Asking for a Grocery List](image-1.png)
 ![The Grocery List Mardown generated with MCP](image-2.png)
 
-*12 tools available for multi-vault note management with heading-aware operations*
+*13 tools available for multi-vault note management with heading-aware operations*
 
 ---
 
@@ -149,6 +149,9 @@ Claude: [uses insert_after_heading_obsidian_note]
 
 User: "Replace the 'Action Items' section with..."
 Claude: [uses replace_section_obsidian_note]
+
+User: "Add a summary paragraph at the end of 'Project Updates' before any subsections"
+Claude: [uses append_to_section_obsidian_note]
 ```
 
 ---
@@ -175,6 +178,7 @@ Claude: [uses replace_section_obsidian_note]
 | Tool | Purpose |
 |------|---------|
 | `insert_after_heading_obsidian_note` | Insert content below a heading |
+| `append_to_section_obsidian_note` | Append content to a heading’s section before subsections |
 | `replace_section_obsidian_note` | Replace content under a heading |
 | `delete_section_obsidian_note` | Remove heading and its section |
 

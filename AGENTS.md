@@ -42,8 +42,9 @@ Notes — Core edits
 
 Notes — Structured inserts & sections
 1. `insert_after_heading_obsidian_note` — Insert content immediately after a heading (case-insensitive match, supports `#`-style levels).
-2. `replace_section_obsidian_note` — Replace everything under a heading until the next heading of equal or higher level.
-3. `delete_section_obsidian_note` — Remove a heading and its section (up to the next heading of equal or higher level).
+2. `append_to_section_obsidian_note` — Append content to a section’s direct body, placing it before the first nested heading.
+3. `replace_section_obsidian_note` — Replace everything under a heading until the next heading of equal or higher level.
+4. `delete_section_obsidian_note` — Remove a heading and its section (up to the next heading of equal or higher level).
 
 Notes — Discovery & search
 1. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault.
