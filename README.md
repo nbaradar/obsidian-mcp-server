@@ -133,6 +133,9 @@ Additionally, you can use your preferred MCP Clients as well! Here I'm using VSC
 ![Obsidian MCP server connected to VSCode Copilot](image-3.png)
 For more detail on how to connect VSCode to MCP, [check here](https://learn.microsoft.com/en-us/visualstudio/ide/mcp-servers?view=vs-2022#options-for-adding-an-mcp-server)
 
+You can even use it with your own Local LLM models! Here I'm running [qwen3-14b](https://lmstudio.ai/models/qwen/qwen3-14b) using [LM Studio](https://lmstudio.ai/)
+![Using Obsidian MCP server with local LLM through LM Studio](image-4.png)
+
 ---
 
 ## 📖 Usage Examples
