@@ -22,7 +22,7 @@ The first version will be written in **Python**, using **FastMCP** for rapid set
 ### Resources (planned)
 
 * **Markdown Files:** Each `.md` file in the vault is a resource.
-* Each resource will have basic metadata such as file path and possibly frontmatter for future versions.
+* Each resource will have basic metadata such as file path and frontmatter (now surfaced through dedicated tools).
 
 ### Tools (current)
 
@@ -47,6 +47,17 @@ Notes — Structured inserts & sections
 3. `replace_section_obsidian_note` — Replace everything under a heading until the next heading of equal or higher level.
 4. `delete_section_obsidian_note` — Remove a heading and its section (up to the next heading of equal or higher level).
 
+Frontmatter Management
+1. `read_obsidian_frontmatter` — Return only the YAML frontmatter block for token-efficient metadata reads.
+2. `update_obsidian_frontmatter` — Merge supplied fields into existing frontmatter (creates the block if missing).
+3. `replace_obsidian_frontmatter` — Overwrite the entire frontmatter with a sanitized payload.
+4. `delete_obsidian_frontmatter` — Remove the frontmatter block while preserving body content.
+
+Helpers underpinning these tools:
+* `_parse_frontmatter(text)` — Splits raw markdown into metadata + body using `python-frontmatter`, normalizing nested mappings.
+* `_serialize_frontmatter(metadata, content)` — Reconstructs markdown with or without a YAML block.
+* `_ensure_valid_yaml(metadata)` — Validates size, key/value types, and converts datetimes to ISO strings before serialization.
+
 Notes — Discovery & search
 1. `list_obsidian_notes` — Return all note identifiers (forward-slash separated, extension stripped) within the vault; accepts `include_metadata` to attach modified/created/size (adds ~9 tokens per note).
 2. `search_obsidian_notes` — Token-efficient substring search across note identifiers with optional metadata and sorting controls (`sort_by` supporting `modified/created/size/name`).
@@ -62,6 +73,7 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 * **Vault allow list:** `vaults.yaml` enumerates friendly vault names and their canonical paths. `_load_vaults_config` resolves each path and rejects unknown or malformed entries. Clients can never pass raw filesystem paths.
 * **Per-session active vaults:** `set_active_vault` stores the chosen vault keyed by `id(ctx.session)` so each MCP connection has isolated state. `resolve_vault` (used by every tool) resolves the proper metadata in the order `vault argument -> session active -> default`.
 * **Path sandboxing:** `_normalize_note_identifier` and `_resolve_note_path` strip extensions, reject `.`/`..`, and ensure the resolved path stays inside the vault root before any filesystem touch. This blocks traversal attacks and absolute paths.
+* **Frontmatter validation:** `_ensure_valid_yaml` enforces YAML-safe schemas, converts date/datetime values to ISO strings, and caps metadata at 10 KB before writing to disk.
 * **Logging:** Creating, updating, deleting notes, and changing the active vault emit `INFO` level logs with the vault name and normalized note identifier for traceability.
 * **Execution environment:** The server still binds only to `127.0.0.1`, keeping operations local.
 
@@ -72,9 +84,14 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 * Implement the six CRUD+list+search tools.
 * Allow Claude Desktop to connect and perform file operations locally.
 
+**v1.4 — Frontmatter Manipulation**
+
+* Introduce `python-frontmatter` helpers for parsing/serializing metadata.
+* Expose `read/update/replace/delete` frontmatter MCP tools with strict validation.
+* Add regression tests covering YAML coercion, merges, and deletion flows.
+
 **v1.5 — Enhancements**
 
-* Add handling for YAML frontmatter and heading-based inserts.
 * Improve search with snippets and partial reads.
 * Add rename/move functionality with optional backlink updates.
 
@@ -92,14 +109,15 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 
 ### Summary
 
-The MCP Server is now a local, multi-vault bridge for secure file management inside Obsidian. The current implementation emphasizes safety (allow list, per-session vault tracking, traversal guards) and auditability (vault-aware responses and logs) while setting the stage for richer automations such as frontmatter handling and content-aware searches in future iterations.
+The MCP Server is now a local, multi-vault bridge for secure file management inside Obsidian. The current implementation emphasizes safety (allow list, per-session vault tracking, traversal guards) and auditability (vault-aware responses and logs) while providing dedicated YAML frontmatter helpers that unlock metadata-centric automations alongside heading-aware edits and token-efficient search.
 
 ---
 
 ## 2025-10 Status Notes (for future maintainers)
 
 * `vaults.yaml` is the single source of truth for vault discovery. Add new vault entries there with `default: <name>` updated accordingly. Reloads happen at module import, so server restarts pick up changes.
-* The helper unit tests do not exist yet. If regressions are a concern, start with tests around `_normalize_note_identifier` and `_resolve_note_path`.
+* Frontmatter regression tests live in `tests/test_frontmatter.py`; extend coverage to path normalization helpers before broader refactors.
+* `python-frontmatter>=1.1.0` is now required. Recreate the virtualenv or run `uv pip install -r requirements.txt` after pulling updates.
 * `vault.exists` in config is recomputed dynamically via `Path.is_dir()` when we build payloads, so stale metadata is less likely. We still surface the `exists` flag to clients so they can warn the user.
 * The session cache (`ACTIVE_VAULTS`) keys off `id(ctx.session)`. FastMCP manages session lifetimes; when a session disappears the entry becomes unreachable and will be garbage collected. No explicit cleanup needed.
 * Tool returns are dicts designed for Claude Desktop, but they’re equally useful for scripts or future REST layers—preserve this structure when extending functionality.
