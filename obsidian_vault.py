@@ -1460,6 +1460,96 @@ def list_notes_in_folder_core(
     }
 
 
+
+def search_notes_by_tags(
+    tags: list[str],
+    vault: VaultMetadata,
+    match_all: bool = False,
+    include_metadata: bool = False,
+) -> dict[str, Any]:
+    """Search notes by tags, parsing only frontmatter for efficiency.
+
+    Args:
+        tags: List of tags to search for (case-insensitive).
+        vault: Vault metadata describing the target vault.
+        match_all: When True require all tags; when False match any tag.
+        include_metadata: When True include file metadata for each match.
+
+    Returns:
+        Dictionary containing the vault name, search parameters, and matches.
+
+    Raises:
+        ValueError: If the tags list is empty or contains only whitespace.
+    """
+    _ensure_vault_ready(vault)
+
+    if not tags or not any(tag.strip() for tag in tags):
+        raise ValueError("Must specify at least one non-empty tag.")
+
+    normalized_search_tags = [tag.strip().lower() for tag in tags if tag.strip()]
+    matches: list[Any] = []
+
+    for note_path in vault.path.rglob("*.md"):
+        if not note_path.is_file():
+            continue
+
+        try:
+            raw_text = note_path.read_text(encoding="utf-8", errors="ignore")
+            if not raw_text.lstrip().startswith("---"):
+                continue
+
+            metadata, _ = _parse_frontmatter(raw_text)
+            note_tags_raw = metadata.get("tags", [])
+
+            if isinstance(note_tags_raw, str):
+                note_tags = [note_tags_raw.strip()]
+            elif isinstance(note_tags_raw, list):
+                note_tags = [str(tag).strip() for tag in note_tags_raw]
+            else:
+                continue
+
+            normalized_note_tags = [tag.lower() for tag in note_tags if tag]
+            if not normalized_note_tags:
+                continue
+
+            if match_all:
+                has_match = all(
+                    search_tag in normalized_note_tags for search_tag in normalized_search_tags
+                )
+            else:
+                has_match = any(
+                    search_tag in normalized_note_tags for search_tag in normalized_search_tags
+                )
+
+            if not has_match:
+                continue
+
+            relative_path = note_path.relative_to(vault.path).with_suffix("")
+            if include_metadata:
+                file_metadata = _get_note_metadata(note_path)
+                file_metadata["path"] = relative_path.as_posix()
+                file_metadata["tags"] = note_tags
+                matches.append(file_metadata)
+            else:
+                matches.append(relative_path.as_posix())
+
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            logger.debug("Skipping file '%s' during tag search: %s", note_path, exc)
+            continue
+
+    if include_metadata:
+        matches.sort(key=lambda item: item["modified"], reverse=True)
+    else:
+        matches.sort()
+
+    return {
+        "vault": vault.name,
+        "tags": tags,
+        "match_mode": "all" if match_all else "any",
+        "matches": matches,
+    }
+
+
 def read_frontmatter(
     title: str,
     vault: VaultMetadata,
@@ -1904,6 +1994,66 @@ async def search_obsidian_content(
         result["query"],
         len(result["results"]),
     )
+    return result
+
+
+@mcp.tool(
+    annotations={
+        "title": "Search Notes by Tag",
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+)
+async def search_notes_by_tag(
+    tags: list[str],
+    vault: Optional[str] = None,
+    match_all: bool = False,
+    include_metadata: bool = False,
+    ctx: Context | None = None,
+) -> dict[str, Any]:
+    """Search notes by tags using frontmatter-only filtering (token-efficient).
+
+    Loads only note frontmatter to find tagged notes, making it substantially more
+    token-efficient than listing all notes and filtering in the client. Supports
+    AND/OR semantics, metadata inclusion, and both string and list tag formats.
+
+    Args:
+        tags: Tags to search for (case-insensitive).
+        vault: Optional vault name; omit to use the active/default vault.
+        match_all: When True require all tags; when False match any tag.
+        include_metadata: When True include metadata (modified, created, size, tags).
+        ctx: Optional FastMCP context for vault resolution.
+
+    Returns:
+        Dictionary containing vault name, original tags, match mode, and matches.
+
+    Examples:
+        - Use when: "Find notes tagged with machine-learning"
+        - Use when: "Show notes tagged both obsidian and mcp" (match_all=True)
+        - Use include_metadata=True: Prioritize most recently modified tagged notes
+        - Workflow: search_notes_by_tag() → retrieve_obsidian_note() for detail
+        - Don't use: Full text search → Use search_obsidian_content()
+        - Don't use: Title search → Use search_obsidian_notes()
+
+    Raises:
+        ValueError: If no non-empty tags are provided.
+    """
+    metadata = resolve_vault(vault, ctx)
+    result = search_notes_by_tags(
+        tags,
+        metadata,
+        match_all=match_all,
+        include_metadata=include_metadata,
+    )
+
+    logger.info(
+        "Tag search in vault '%s' for tags %s (%s mode) found %d matches",
+        metadata.name,
+        tags,
+        result["match_mode"],
+        len(result["matches"]),
+    )
+
     return result
 
 # ==============================================================================
