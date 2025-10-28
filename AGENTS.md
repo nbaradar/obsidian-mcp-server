@@ -63,6 +63,7 @@ Notes — Discovery & search
 2. `search_obsidian_notes` — Token-efficient substring search across note identifiers with optional metadata and sorting controls (`sort_by` supporting `modified/created/size/name`).
 3. `list_notes_in_folder` — Folder-targeted listing with optional recursion and metadata; ideal for "most recent note in X" queries without scanning the entire vault.
 4. `search_obsidian_content` — Token-efficient content search that returns up to three 200-character snippets per file (100 chars of context on each side of the hit), capped at ten files and sorted by match count.
+5. `search_notes_by_tag` — Token-efficient tag search that inspects YAML frontmatter only, supporting ANY/ALL matching and optional metadata.
 
 Each tool’s docstring includes UX hints explicitly telling Claude Desktop to use `list_vaults` for discovery and that omitting `vault` defers to the active or default vault. This dramatically improves agent behavior: Claude can respond to requests like “update my work vault” by first setting the vault, then calling note helpers without needing to restate the name every time.
 
@@ -84,11 +85,12 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 * Implement the six CRUD+list+search tools.
 * Allow Claude Desktop to connect and perform file operations locally.
 
-**v1.4 — Frontmatter Manipulation**
+**v1.4 — Frontmatter Manipulation + Tag Search**
 
 * Introduce `python-frontmatter` helpers for parsing/serializing metadata.
 * Expose `read/update/replace/delete` frontmatter MCP tools with strict validation.
 * Add regression tests covering YAML coercion, merges, and deletion flows.
+* Add `search_notes_by_tag` for frontmatter-only tag filtering with AND/OR modes and optional metadata.
 
 **v1.5 — Enhancements**
 

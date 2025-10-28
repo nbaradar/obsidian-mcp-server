@@ -127,7 +127,7 @@ Once configured, you'll see your Obsidian tools available in Claude Desktop:
 ![Obsidian MCP Tools listed in Claude for Desktop](image.png)
 ![Asking for a Grocery List](image-1.png)
 ![The Grocery List Mardown generated with MCP](image-2.png)
-*21 tools available for multi-vault note management with heading-aware operations*
+*22 tools available for multi-vault note management with heading-aware operations*
 
 Additionally, you can use your preferred MCP Clients as well! Here I'm using VSCode with Copilot in Agent mode.  
 ![Obsidian MCP server connected to VSCode Copilot](image-3.png)
@@ -211,6 +211,7 @@ Claude: [uses list_notes_in_folder("Mental Health", include_metadata=True, sort_
 | `search_obsidian_notes` | Search note titles (supports metadata + sorting) |
 | `list_notes_in_folder` | Targeted folder listing (metadata + recursion support) |
 | `search_obsidian_content` | Token-efficient content search |
+| `search_notes_by_tag` | Token-efficient tag-based search |
 
 > **Metadata on demand:** `list_obsidian_notes`, `search_obsidian_notes`, and `list_notes_in_folder`
 > accept `include_metadata=True` to attach ISO timestamps and file sizes. The flag adds roughly
@@ -307,8 +308,8 @@ Currently runs via **STDIO** (local-only). Future versions will support **HTTP t
 - [x] **v1.1** — Token-efficient content search
 - [x] **v1.2** — Structured heading-based editing
 - [x] **v1.3** — Improve Vault Navigation
-- [x] **v1.4** — Frontmatter Manipulation
-- [ ] **v1.4.1** - Tagging Automation / Search updates
+- [x] **v1.4** — Frontmatter Manipulation + Tag Search
+- [x] **v1.4.1** — Tag search tooling refinement (completed)
 - [ ] **v1.5** — Pydantic Data Models for Input Validation
 - [ ] **v1.6** — Vault-Aware Prompt Resources
 - [ ] **v1.6.1** — Vault-Specific Templates
@@ -355,4 +356,3 @@ Built with:
 <p align="center">
   <i>Built because context matters, and Obsidian is where mine lives.</i>
 </p>
-
