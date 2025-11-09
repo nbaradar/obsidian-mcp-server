@@ -270,12 +270,11 @@ Graceful, descriptive, and safe:
 ---
 
 ## 🧪 Testing Summary
-Implementation verified across multiple real vaults.
+Implementation verified across multiple real vaults and automated suites.
 
-- 13 functional tests covering CRUD, structured edits, and edge cases.
-- Confirmed frontmatter preservation, newline consistency, and case-insensitive heading matching.
-- 100% pass rate after v1.2.1 fixes (formatting + nested heading improvements).
-- See [`tests/v1.2 Testing.md`](./v1.2%20Testing.md) for details.
+- 27 tag-search tests covering format handling, case insensitivity, metadata sorting, nested folders, AND/OR semantics, performance, and async MCP integration.
+- 4 path-normalization regression tests ensuring dotted note titles, nested paths, uppercase `.MD`, and traversal rejection behave as expected.
+- Test command: `PYTHONPATH=. uv run --with pytest --with pytest-asyncio pytest tests/test_path_normalization.py tests/test_tag_search.py`
 
 ---
 
@@ -299,6 +298,7 @@ Currently runs via **STDIO** (local-only). Future versions will support **HTTP t
 - No image/attachment management.
 - No backlink maintenance (beyond link updates on move/rename).
 - No HTTP transport or auth (STDIO only).
+- Note titles with dots are fully supported as of v1.4.2; `_normalize_note_identifier` preserves inner segments while enforcing sandbox rules.
 
 ---
 
@@ -310,6 +310,7 @@ Currently runs via **STDIO** (local-only). Future versions will support **HTTP t
 - [x] **v1.3** — Improve Vault Navigation
 - [x] **v1.4** — Frontmatter Manipulation + Tag Search
 - [x] **v1.4.1** — Tag search tooling refinement (completed)
+- [x] **v1.4.2** — Preserve dotted note identifiers in `_normalize_note_identifier`
 - [ ] **v1.5** — Pydantic Data Models for Input Validation
 - [ ] **v1.6** — Vault-Aware Prompt Resources
 - [ ] **v1.6.1** — Vault-Specific Templates

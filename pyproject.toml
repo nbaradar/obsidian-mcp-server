@@ -16,3 +16,9 @@ markers = [
     "slow: marks tests as slow",
     "integration: marks integration tests",
 ]
+
+[tool.setuptools]
+# In a flat layout (top-level .py modules) declare them explicitly so
+# editable installs (pip install -e .) work without setuptools' flat-layout
+# error. We list both top-level modules present in this folder.
+py-modules = ["obsidian_vault", "main"]
