@@ -235,7 +235,7 @@ def _normalize_note_identifier(identifier: str) -> Path:
     if not cleaned:
         raise ValueError("Note title cannot be empty.")
 
-    if cleaned.endswith(".md"):
+    if cleaned.lower().endswith(".md"):
         cleaned = cleaned[: -len(".md")]
 
     parts = [segment.strip() for segment in cleaned.split("/") if segment.strip()]
@@ -244,7 +244,12 @@ def _normalize_note_identifier(identifier: str) -> Path:
     if any(part in {".", ".."} for part in parts):
         raise ValueError("Note title cannot contain '.' or '..' segments.")
 
-    relative = Path(*parts).with_suffix(".md")
+    leaf = parts[-1]
+    leaf_with_extension = f"{leaf}.md"
+    if len(parts) == 1:
+        relative = Path(leaf_with_extension)
+    else:
+        relative = Path(*parts[:-1]) / leaf_with_extension
     if relative.is_absolute():
         raise ValueError("Note title must be a relative path within the vault.")
 
