@@ -339,6 +339,7 @@ Currently runs via **STDIO** (local-only). Future versions will support **HTTP t
 - [x] **v1.4** — Frontmatter Manipulation + Tag Search
 - [x] **v1.4.1** — Tag search tooling refinement (completed)
 - [x] **v1.4.2** — Preserve dotted note identifiers in `_normalize_note_identifier`
+- [x] **v1.4.3** — Refactor Codebase Structure
 - [ ] **v1.5** — Pydantic Data Models for Input Validation
 - [ ] **v1.6** — Vault-Aware Prompt Resources
 - [ ] **v1.6.1** — Vault-Specific Templates
