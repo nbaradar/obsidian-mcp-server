@@ -65,7 +65,7 @@ async def insert_after_heading_obsidian_note(
         - Heading not found → Error, suggest retrieve_obsidian_note() to see structure
     """
     metadata = resolve_vault(vault, ctx)
-    return insert_after_heading(title, content, heading, metadata)
+    return insert_after_heading(metadata, title, heading, content)
 
 
 # Appends to the end of the heading's direct section content, just before any nested
@@ -104,7 +104,7 @@ async def append_to_section_obsidian_note(
         - Heading not found → Error with heading name
     """
     metadata = resolve_vault(vault, ctx)
-    return append_to_section(title, content, heading, metadata)
+    return append_to_section(metadata, title, heading, content)
 
 
 # Replaces the section body beneath a heading until the next equal-or-higher heading.
@@ -141,7 +141,7 @@ async def replace_section_obsidian_note(
         - Heading not found → Error, use retrieve_obsidian_note() to see structure
     """
     metadata = resolve_vault(vault, ctx)
-    return replace_section(title, content, heading, metadata)
+    return replace_section(metadata, title, heading, content)
 
 
 # Deletes a heading and its section content. Useful for removing stale blocks.
@@ -176,4 +176,4 @@ async def delete_section_obsidian_note(
         - Heading not found → Error with heading name
     """
     metadata = resolve_vault(vault, ctx)
-    return delete_section(title, heading, metadata)
+    return delete_section(metadata, title, heading)
