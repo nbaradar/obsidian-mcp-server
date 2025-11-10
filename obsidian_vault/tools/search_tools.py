@@ -20,7 +20,7 @@ from obsidian_vault.core.search_operations import (
     search_notes,
     search_note_content,
     search_notes_by_tags,
-    list_notes_in_folder_core,
+    list_notes_in_folder,
 )
 from obsidian_vault.core.note_operations import list_notes
 
@@ -290,7 +290,7 @@ async def list_notes_in_folder(
         - Empty folder → Returns {"notes": []}
     """
     metadata = resolve_vault(vault, ctx)
-    return list_notes_in_folder_core(
+    return list_notes_in_folder(
         metadata,
         folder_path=folder_path,
         recursive=recursive,
