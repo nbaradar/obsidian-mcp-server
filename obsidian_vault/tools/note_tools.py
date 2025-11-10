@@ -23,8 +23,8 @@ from obsidian_vault.core.note_operations import (
     create_note,
     retrieve_note,
     replace_note,
-    append_note,
-    prepend_note,
+    append_to_note,
+    prepend_to_note,
     move_note,
     delete_note,
 )
@@ -76,7 +76,7 @@ async def retrieve_obsidian_note(
         - Vault not accessible → Error with vault path
     """
     metadata = resolve_vault(vault, ctx)
-    return retrieve_note(title, metadata)
+    return retrieve_note(metadata, title)
 
 
 # ==============================================================================
@@ -119,7 +119,7 @@ async def create_obsidian_note(
         - Filesystem permission error → Error with details
     """
     metadata = resolve_vault(vault, ctx)
-    return create_note(title, content, metadata)
+    return create_note(metadata, title, content)
 
 
 # ==============================================================================
@@ -175,7 +175,7 @@ async def move_obsidian_note(
         - Invalid paths → Error describing issue
     """
     metadata = resolve_vault(vault, ctx)
-    return move_note(old_title, new_title, metadata, update_links=update_links)
+    return move_note(metadata, old_title, new_title, update_links=update_links)
 
 
 # Replaces the entire file contents. The response includes ``status: "replaced"``.
@@ -211,7 +211,7 @@ async def replace_obsidian_note(
         - Invalid title → Error describing issue
     """
     metadata = resolve_vault(vault, ctx)
-    return replace_note(title, content, metadata)
+    return replace_note(metadata, title, content)
 
 
 # Appends raw markdown to the end of a note, auto-inserting a newline when needed.
@@ -248,7 +248,7 @@ async def append_to_obsidian_note(
         - Note not found → Error, suggest create_obsidian_note() instead
     """
     metadata = resolve_vault(vault, ctx)
-    return append_note(title, content, metadata)
+    return append_to_note(metadata, title, content)
 
 
 # Inserts raw markdown at the start of the file, preserving existing content.
@@ -282,7 +282,7 @@ async def prepend_to_obsidian_note(
         - Note not found → Error, suggest create_obsidian_note()
     """
     metadata = resolve_vault(vault, ctx)
-    return prepend_note(title, content, metadata)
+    return prepend_to_note(metadata, title, content)
 
 
 # ==============================================================================
@@ -319,4 +319,4 @@ async def delete_obsidian_note(
         - Filesystem permission error → Error with details
     """
     metadata = resolve_vault(vault, ctx)
-    return delete_note(title, metadata)
+    return delete_note(metadata, title)
