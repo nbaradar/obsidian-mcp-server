@@ -127,11 +127,81 @@ The MCP Server is now a local, multi-vault bridge for secure file management ins
 
 ---
 
+## Codebase Structure (v1.4.3 - Modular Refactor)
+
+**As of v1.4.3**, the codebase has been refactored from a single monolithic `obsidian_vault.py` file into a well-organized package structure for better maintainability, testability, and extensibility.
+
+### Package Structure
+
+```
+obsidian-mcp-server/
+├── obsidian_vault/              # Main package directory
+│   ├── __init__.py              # Package initialization, exports server and tools
+│   ├── server.py                # FastMCP server setup and tool registration
+│   ├── config.py                # Configuration loading (vaults.yaml)
+│   ├── models.py                # Pydantic models and dataclasses
+│   ├── session.py               # Session state management (active vault)
+│   ├── constants.py             # Module-level constants
+│   │
+│   ├── core/                    # Core business logic (NO MCP dependencies)
+│   │   ├── vault_operations.py       # Path validation and sandboxing
+│   │   ├── note_operations.py        # Note CRUD operations
+│   │   ├── search_operations.py      # Search and discovery
+│   │   ├── section_operations.py     # Heading-based manipulation
+│   │   └── frontmatter_operations.py # YAML frontmatter ops
+│   │
+│   └── tools/                   # MCP tool definitions (thin wrappers)
+│       ├── vault_tools.py       # list_vaults, set_active_vault
+│       ├── note_tools.py        # CRUD tool wrappers
+│       ├── search_tools.py      # Search/discovery tool wrappers
+│       ├── section_tools.py     # Section manipulation tool wrappers
+│       └── frontmatter_tools.py # Frontmatter tool wrappers
+│
+├── main.py                      # Entry point for MCP server
+├── vaults.yaml                  # Vault configuration
+└── tests/                       # Test suite
+```
+
+### Design Principles
+
+1. **Separation of Concerns**: Core business logic (`core/`) is completely independent of MCP. Tool modules (`tools/`) are thin wrappers that handle MCP-specific concerns (context, vault resolution, response formatting).
+
+2. **Single Responsibility**: Each module has a clear, focused purpose:
+   - `vault_operations.py`: Path validation ONLY
+   - `note_operations.py`: CRUD operations ONLY
+   - `search_operations.py`: Search/discovery ONLY
+   - Tool modules: MCP decorators and vault resolution ONLY
+
+3. **Testability**: Core modules can be tested without MCP server infrastructure. Tool modules test MCP integration separately.
+
+4. **Import Flow**:
+   - `main.py` → `obsidian_vault/__init__.py` → imports `tools/` → registers with `server.py`
+   - Tools import from `core/` for business logic
+   - `core/` modules import from `models.py`, `constants.py` (no circular deps)
+
+### Working with the Codebase
+
+**Adding a New Tool:**
+1. Add core logic function to appropriate `core/*.py` module
+2. Create MCP wrapper in appropriate `tools/*.py` module
+3. Import is automatic via `tools/__init__.py`
+
+**Modifying Business Logic:**
+1. Edit the appropriate `core/*.py` module
+2. No changes needed to tool wrappers (they just delegate)
+3. Update tests in `tests/`
+
+**Configuration Changes:**
+1. Edit `vaults.yaml` for vault configuration
+2. Edit `constants.py` for module-level constants
+3. Changes picked up on next import/restart
+
 ## 2025-10 Status Notes (for future maintainers)
 
-* `vaults.yaml` is the single source of truth for vault discovery. Add new vault entries there with `default: <name>` updated accordingly. Reloads happen at module import, so server restarts pick up changes.
-* Regression tests live in `tests/test_frontmatter.py` (frontmatter), `tests/test_tag_search.py` (tag workflows), and `tests/test_path_normalization.py` (note identifier safety). Keep them updated before broader refactors.
-* `python-frontmatter>=1.1.0` is now required. Recreate the virtualenv or run `uv pip install -r requirements.txt` after pulling updates.
-* `vault.exists` in config is recomputed dynamically via `Path.is_dir()` when we build payloads, so stale metadata is less likely. We still surface the `exists` flag to clients so they can warn the user.
-* The session cache (`ACTIVE_VAULTS`) keys off `id(ctx.session)`. FastMCP manages session lifetimes; when a session disappears the entry becomes unreachable and will be garbage collected. No explicit cleanup needed.
-* Tool returns are dicts designed for Claude Desktop, but they’re equally useful for scripts or future REST layers—preserve this structure when extending functionality.
+* **Codebase**: As of v1.4.3, the codebase uses a modular package structure. The old `obsidian_vault.py` monolith has been refactored into `obsidian_vault/` package with clear separation between core business logic (`core/`) and MCP tool wrappers (`tools/`).
+* **Configuration**: `vaults.yaml` is the single source of truth for vault discovery. Add new vault entries there with `default: <name>` updated accordingly. Loaded by `config.py` at module import time.
+* **Testing**: Regression tests live in `tests/test_frontmatter.py` (frontmatter), `tests/test_tag_search.py` (tag workflows), and `tests/test_path_normalization.py` (note identifier safety). Keep them updated before broader refactors.
+* **Dependencies**: `python-frontmatter>=1.1.0` is required. Use `uv pip install -r requirements.txt` to install dependencies.
+* **Session Management**: The session cache (`_ACTIVE_VAULTS` in `session.py`) keys off `id(ctx.session)`. FastMCP manages session lifetimes; garbage collection handles cleanup automatically.
+* **Tool Returns**: All tool return dicts are designed for Claude Desktop but are equally useful for scripts or future REST layers—preserve this structure when extending functionality.
+* **Vault Metadata**: `vault.exists` in config payloads is computed dynamically via `Path.is_dir()` in `models.py`, so stale metadata is less likely.
