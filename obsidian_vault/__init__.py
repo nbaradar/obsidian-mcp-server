@@ -3,7 +3,8 @@
 Multi-vault Obsidian note management via Model Context Protocol.
 """
 
-__version__ = "1.4.3"
+from obsidian_vault.config import VAULT_CONFIGURATION
+from obsidian_vault.models import VaultMetadata, VaultConfiguration
 
-# Public API will be added as modules are created
-__all__ = []
+__version__ = "1.4.3"
+__all__ = ["VAULT_CONFIGURATION", "VaultMetadata", "VaultConfiguration"]
