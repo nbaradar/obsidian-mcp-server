@@ -222,13 +222,41 @@ Claude: [uses list_notes_in_folder("Mental Health", include_metadata=True, sort_
 
 ## 🧭 Internal Architecture
 
-Under the hood, tool handlers delegate to a small helper layer:
+**As of v1.4.3**, the codebase uses a **modular package structure** for better maintainability and testability:
 
-- **Vault helpers:** resolve sandboxed paths, enforce allow-list (`vaults.yaml`), extract filesystem metadata.
-- **Editing helpers:** find headings, compute section boundaries, handle newline/spacing consistently.
-- **Frontmatter helpers:** parse/serialize YAML safely and validate inputs (UTF-8, type safety, size limits).
+```
+obsidian_vault/
+├── core/                    # Pure business logic (NO MCP dependencies)
+│   ├── vault_operations.py       # Path validation and sandboxing
+│   ├── note_operations.py        # Note CRUD operations
+│   ├── search_operations.py      # Search and discovery
+│   ├── section_operations.py     # Heading-based manipulation
+│   └── frontmatter_operations.py # YAML frontmatter ops
+│
+├── tools/                   # MCP tool wrappers (thin layer)
+│   ├── vault_tools.py       # Vault management tools
+│   ├── note_tools.py        # Note CRUD tool wrappers
+│   ├── search_tools.py      # Search tool wrappers
+│   ├── section_tools.py     # Section tool wrappers
+│   └── frontmatter_tools.py # Frontmatter tool wrappers
+│
+├── server.py                # FastMCP server initialization
+├── config.py                # Configuration loading (vaults.yaml)
+├── session.py               # Per-session active vault tracking
+└── models.py                # Data models (VaultMetadata, etc.)
+```
 
-This keeps MCP tool code small, predictable, and easy to test.
+**Key Benefits:**
+- **Separation of Concerns**: Core logic is MCP-agnostic and can be tested independently
+- **Single Responsibility**: Each module has one clear purpose
+- **Extensibility**: Add new features by extending core modules, tool wrappers auto-register
+- **Testability**: Core modules can be unit tested without MCP server infrastructure
+
+**Data Flow:**
+1. MCP tool wrapper receives request (handles context, vault resolution)
+2. Calls corresponding core operation (pure business logic)
+3. Core operation returns structured data
+4. Tool wrapper formats response for MCP client
 
 ---
 
