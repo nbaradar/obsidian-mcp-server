@@ -168,8 +168,15 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
   - Added validation for folder paths to prevent path traversal
   - All search and frontmatter operations now have comprehensive validation at MCP boundary
 
-* **Phase 5 (Planned)**: Vault Management Tools
-  - Migrate vault selection tools with existence validation
+* **Phase 5 (Completed)**: Vault Management Tools
+  - Created `obsidian_vault/models/vault_models.py` with 2 vault input models:
+    * `ListVaultsInput` - No required fields (maintains API consistency)
+    * `SetActiveVaultInput` - Validates vault name not empty or only whitespace
+  - Migrated both vault management tools to use Pydantic models:
+    * `list_vaults` → `ListVaultsInput`
+    * `set_active_vault` → `SetActiveVaultInput`
+  - All 22 MCP tools now migrated to Pydantic validation (100% complete)
+  - Benefits: Complete input validation coverage, consistent API across all tools
 
 * **Phase 6 (Planned)**: Cleanup & Optimization
   - Remove redundant validation from `vault_operations.normalize_note_identifier()`
@@ -216,7 +223,8 @@ obsidian-mcp-server/
 │   │   ├── note_models.py            # Note CRUD input models
 │   │   ├── section_models.py         # Section manipulation input models
 │   │   ├── search_models.py          # Search and discovery input models
-│   │   └── frontmatter_models.py     # Frontmatter management input models
+│   │   ├── frontmatter_models.py     # Frontmatter management input models
+│   │   └── vault_models.py           # Vault management input models
 │   │
 │   ├── core/                    # Core business logic (NO MCP dependencies)
 │   │   ├── vault_operations.py       # Path validation and sandboxing

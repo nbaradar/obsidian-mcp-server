@@ -17,10 +17,12 @@ Architecture:
 - section_models: Input models for section manipulation operations
 - search_models: Input models for search and discovery operations
 - frontmatter_models: Input models for frontmatter management operations
+- vault_models: Input models for vault management operations
 
 Usage:
     from obsidian_vault.models import RetrieveNoteInput, CreateNoteInput
     from obsidian_vault.models import SearchNotesInput, ReadFrontmatterInput
+    from obsidian_vault.models import ListVaultsInput, SetActiveVaultInput
 """
 
 from .base import BaseNoteInput, BaseSectionInput
@@ -52,6 +54,10 @@ from .frontmatter_models import (
     ReplaceFrontmatterInput,
     DeleteFrontmatterInput,
 )
+from .vault_models import (
+    ListVaultsInput,
+    SetActiveVaultInput,
+)
 
 __all__ = [
     # Base models
@@ -81,4 +87,7 @@ __all__ = [
     "UpdateFrontmatterInput",
     "ReplaceFrontmatterInput",
     "DeleteFrontmatterInput",
+    # Vault models
+    "ListVaultsInput",
+    "SetActiveVaultInput",
 ]
