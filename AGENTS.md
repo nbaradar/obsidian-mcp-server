@@ -104,7 +104,7 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 * Added regression coverage in `tests/test_path_normalization.py` for dotted basenames, nested paths, uppercase `.MD`, and traversal rejection.
 * Documented behavior in README and AGENTS to clarify support for dotted note names.
 
-**v1.5 — Pydantic Input Validation (In Progress)**
+**v1.5 — Pydantic Input Validation (Completed)**
 
 * **Phase 1 (Completed)**: Infrastructure & Foundation
   - Added `obsidian_vault/input_models.py` with Pydantic v2 models for input validation
@@ -178,10 +178,24 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
   - All 22 MCP tools now migrated to Pydantic validation (100% complete)
   - Benefits: Complete input validation coverage, consistent API across all tools
 
-* **Phase 6 (Planned)**: Cleanup & Optimization
-  - Remove redundant validation from `vault_operations.normalize_note_identifier()`
-  - Consolidate validation logic in input models
-  - Performance benchmarking and optimization
+* **Phase 6 (Completed)**: Cleanup & Optimization
+  - Refactored `normalize_note_identifier()` to `construct_note_path()` in `obsidian_vault/core/vault_operations.py`
+    * Removed redundant validation (empty title, .md stripping, path traversal, absolute path checks)
+    * New function performs only path construction, no validation
+    * Kept deprecated `normalize_note_identifier()` as backwards-compatible wrapper
+  - Updated `resolve_note_path()` to use `construct_note_path()`
+    * Removed redundant validation calls
+    * Retains only filesystem-level sandbox enforcement (path escape check)
+    * Updated docstring to clarify pre-validation assumption
+  - Benefits:
+    * Single source of truth: All input validation centralized in Pydantic models
+    * Performance: Eliminates 4 redundant validation checks per operation
+    * Clarity: Clear separation between validation (MCP boundary) and execution (core operations)
+    * Security: Filesystem-level checks remain in core where they belong
+  - Documentation:
+    * Updated `VALIDATION_REDUNDANCY.md` with completed checklist and implementation details
+    * Updated function docstrings with IMPORTANT notes about pre-validation assumptions
+    * Maintained backwards compatibility with deprecated function for old code
 
 **v2 — Advanced Behavior**
 
