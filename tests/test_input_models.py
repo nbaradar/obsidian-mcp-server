@@ -11,7 +11,16 @@ ensuring that:
 import pytest
 from pydantic import ValidationError
 
-from obsidian_vault.input_models import BaseNoteInput, RetrieveNoteInput
+from obsidian_vault.input_models import (
+    BaseNoteInput,
+    RetrieveNoteInput,
+    CreateNoteInput,
+    ReplaceNoteInput,
+    AppendNoteInput,
+    PrependNoteInput,
+    MoveNoteInput,
+    DeleteNoteInput,
+)
 
 
 class TestBaseNoteInput:
@@ -270,3 +279,252 @@ class TestPydanticIntegration:
         model = RetrieveNoteInput.model_construct(title="", vault="")
         # No validation error raised
         assert model.title == ""
+
+
+class TestCreateNoteInput:
+    """Test suite for CreateNoteInput model validation."""
+
+    def test_valid_create_with_content(self):
+        """Test creating note with content."""
+        model = CreateNoteInput(title="New Note", content="# Hello\n\nWorld")
+        assert model.title == "New Note"
+        assert model.content == "# Hello\n\nWorld"
+
+    def test_valid_create_with_empty_content(self):
+        """Test creating blank note with empty content."""
+        model = CreateNoteInput(title="Blank Note", content="")
+        assert model.title == "Blank Note"
+        assert model.content == ""
+
+    def test_create_inherits_title_validation(self):
+        """Test that title validation is inherited from BaseNoteInput."""
+        with pytest.raises(ValidationError):
+            CreateNoteInput(title="", content="test")
+
+        with pytest.raises(ValidationError):
+            CreateNoteInput(title="../escape", content="test")
+
+
+class TestReplaceNoteInput:
+    """Test suite for ReplaceNoteInput model validation."""
+
+    def test_valid_replace_with_content(self):
+        """Test replacing note with content."""
+        model = ReplaceNoteInput(title="Existing Note", content="# Updated\n\nNew content")
+        assert model.title == "Existing Note"
+        assert model.content == "# Updated\n\nNew content"
+
+    def test_valid_replace_with_empty_content(self):
+        """Test clearing note by replacing with empty content."""
+        model = ReplaceNoteInput(title="Note to Clear", content="")
+        assert model.title == "Note to Clear"
+        assert model.content == ""
+
+    def test_replace_inherits_title_validation(self):
+        """Test that title validation is inherited."""
+        with pytest.raises(ValidationError):
+            ReplaceNoteInput(title="", content="test")
+
+
+class TestAppendNoteInput:
+    """Test suite for AppendNoteInput model validation."""
+
+    def test_valid_append_with_content(self):
+        """Test appending content to note."""
+        model = AppendNoteInput(title="Log", content="\n- New entry")
+        assert model.title == "Log"
+        assert model.content == "\n- New entry"
+
+    def test_append_empty_content_raises_error(self):
+        """Test that empty content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppendNoteInput(title="Log", content="")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "empty" in error_messages.lower() or "content" in error_messages.lower()
+
+    def test_append_whitespace_only_content_raises_error(self):
+        """Test that whitespace-only content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppendNoteInput(title="Log", content="   \n\t  ")
+
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+
+    def test_append_inherits_title_validation(self):
+        """Test that title validation is inherited."""
+        with pytest.raises(ValidationError):
+            AppendNoteInput(title="../escape", content="test")
+
+
+class TestPrependNoteInput:
+    """Test suite for PrependNoteInput model validation."""
+
+    def test_valid_prepend_with_content(self):
+        """Test prepending content to note."""
+        model = PrependNoteInput(title="Changelog", content="## 2025-10-27\n\n- New feature\n\n")
+        assert model.title == "Changelog"
+        assert model.content == "## 2025-10-27\n\n- New feature\n\n"
+
+    def test_prepend_empty_content_raises_error(self):
+        """Test that empty content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            PrependNoteInput(title="Log", content="")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "empty" in error_messages.lower() or "content" in error_messages.lower()
+
+    def test_prepend_whitespace_only_content_raises_error(self):
+        """Test that whitespace-only content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            PrependNoteInput(title="Log", content="   ")
+
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+
+    def test_prepend_inherits_title_validation(self):
+        """Test that title validation is inherited."""
+        with pytest.raises(ValidationError):
+            PrependNoteInput(title="", content="test")
+
+
+class TestMoveNoteInput:
+    """Test suite for MoveNoteInput model validation."""
+
+    def test_valid_move_rename_only(self):
+        """Test renaming a note without changing folder."""
+        model = MoveNoteInput(old_title="Old Name", new_title="New Name")
+        assert model.old_title == "Old Name"
+        assert model.new_title == "New Name"
+        assert model.update_links is True
+
+    def test_valid_move_folder_only(self):
+        """Test moving note to different folder without renaming."""
+        model = MoveNoteInput(
+            old_title="Projects/Note",
+            new_title="Archive/Note"
+        )
+        assert model.old_title == "Projects/Note"
+        assert model.new_title == "Archive/Note"
+
+    def test_valid_move_folder_and_rename(self):
+        """Test moving and renaming note."""
+        model = MoveNoteInput(
+            old_title="Projects/Old Name",
+            new_title="Archive/New Name",
+            update_links=False
+        )
+        assert model.old_title == "Projects/Old Name"
+        assert model.new_title == "Archive/New Name"
+        assert model.update_links is False
+
+    def test_move_same_title_raises_error(self):
+        """Test that same old_title and new_title raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            MoveNoteInput(old_title="Same Name", new_title="Same Name")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "different" in error_messages.lower() or "same" in error_messages.lower()
+
+    def test_move_empty_old_title_raises_error(self):
+        """Test that empty old_title raises ValidationError."""
+        with pytest.raises(ValidationError):
+            MoveNoteInput(old_title="", new_title="New Name")
+
+    def test_move_empty_new_title_raises_error(self):
+        """Test that empty new_title raises ValidationError."""
+        with pytest.raises(ValidationError):
+            MoveNoteInput(old_title="Old Name", new_title="")
+
+    def test_move_path_traversal_old_title_raises_error(self):
+        """Test that path traversal in old_title raises ValidationError."""
+        with pytest.raises(ValidationError):
+            MoveNoteInput(old_title="../escape", new_title="New Name")
+
+    def test_move_path_traversal_new_title_raises_error(self):
+        """Test that path traversal in new_title raises ValidationError."""
+        with pytest.raises(ValidationError):
+            MoveNoteInput(old_title="Old Name", new_title="../escape")
+
+    def test_move_strips_md_extension(self):
+        """Test that .md extension is stripped from titles."""
+        model = MoveNoteInput(old_title="Old.md", new_title="New.md")
+        assert model.old_title == "Old"
+        assert model.new_title == "New"
+
+    def test_move_update_links_default_true(self):
+        """Test that update_links defaults to True."""
+        model = MoveNoteInput(old_title="Old", new_title="New")
+        assert model.update_links is True
+
+
+class TestDeleteNoteInput:
+    """Test suite for DeleteNoteInput model validation."""
+
+    def test_valid_delete(self):
+        """Test deleting a note."""
+        model = DeleteNoteInput(title="Old Note")
+        assert model.title == "Old Note"
+        assert model.vault is None
+
+    def test_valid_delete_with_vault(self):
+        """Test deleting a note from specific vault."""
+        model = DeleteNoteInput(title="Archive/Old Project", vault="work")
+        assert model.title == "Archive/Old Project"
+        assert model.vault == "work"
+
+    def test_delete_inherits_title_validation(self):
+        """Test that title validation is inherited from BaseNoteInput."""
+        with pytest.raises(ValidationError):
+            DeleteNoteInput(title="")
+
+        with pytest.raises(ValidationError):
+            DeleteNoteInput(title="../escape")
+
+        with pytest.raises(ValidationError):
+            DeleteNoteInput(title="/absolute/path")
+
+
+class TestAllModelsSchemaGeneration:
+    """Test that all models can generate JSON schemas for MCP."""
+
+    def test_create_note_schema(self):
+        """Test CreateNoteInput schema generation."""
+        schema = CreateNoteInput.model_json_schema()
+        assert "properties" in schema
+        assert "title" in schema["properties"]
+        assert "content" in schema["properties"]
+
+    def test_replace_note_schema(self):
+        """Test ReplaceNoteInput schema generation."""
+        schema = ReplaceNoteInput.model_json_schema()
+        assert "properties" in schema
+        assert "title" in schema["properties"]
+
+    def test_append_note_schema(self):
+        """Test AppendNoteInput schema generation."""
+        schema = AppendNoteInput.model_json_schema()
+        assert "properties" in schema
+        assert "content" in schema["properties"]
+
+    def test_prepend_note_schema(self):
+        """Test PrependNoteInput schema generation."""
+        schema = PrependNoteInput.model_json_schema()
+        assert "properties" in schema
+
+    def test_move_note_schema(self):
+        """Test MoveNoteInput schema generation."""
+        schema = MoveNoteInput.model_json_schema()
+        assert "properties" in schema
+        assert "old_title" in schema["properties"]
+        assert "new_title" in schema["properties"]
+        assert "update_links" in schema["properties"]
+
+    def test_delete_note_schema(self):
+        """Test DeleteNoteInput schema generation."""
+        schema = DeleteNoteInput.model_json_schema()
+        assert "properties" in schema
+        assert "title" in schema["properties"]

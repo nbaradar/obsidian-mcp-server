@@ -118,10 +118,17 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
   - Added comprehensive test suite (`tests/test_input_models.py`) with 30+ test cases
   - Benefits: MCP clients now receive JSON schemas with validation rules upfront, reducing trial-and-error validation failures
 
-* **Phase 2 (Planned)**: Note CRUD Tools
-  - Migrate all 7 note CRUD tools (create, replace, append, prepend, move, delete)
-  - Create dedicated input models for each operation type
-  - Remove redundant validation from core operations
+* **Phase 2 (Completed)**: Note CRUD Tools
+  - Migrated all 6 remaining note CRUD tools to use Pydantic models:
+    * `create_obsidian_note` → `CreateNoteInput`
+    * `replace_obsidian_note` → `ReplaceNoteInput`
+    * `append_to_obsidian_note` → `AppendNoteInput` (validates content not empty)
+    * `prepend_to_obsidian_note` → `PrependNoteInput` (validates content not empty)
+    * `move_obsidian_note` → `MoveNoteInput` (validates titles different)
+    * `delete_obsidian_note` → `DeleteNoteInput`
+  - Added 80+ additional test cases covering all new models
+  - Created `VALIDATION_REDUNDANCY.md` documenting overlapping validation for Phase 6 cleanup
+  - All note CRUD operations now have comprehensive Pydantic validation at MCP boundary
 
 * **Phase 3 (Planned)**: Section Manipulation Tools
   - Migrate 4 section/heading tools with heading-specific validation

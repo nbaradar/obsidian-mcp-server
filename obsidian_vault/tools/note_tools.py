@@ -19,7 +19,15 @@ from mcp.server.fastmcp import Context
 
 from obsidian_vault.server import mcp
 from obsidian_vault.session import resolve_vault
-from obsidian_vault.input_models import RetrieveNoteInput
+from obsidian_vault.input_models import (
+    RetrieveNoteInput,
+    CreateNoteInput,
+    ReplaceNoteInput,
+    AppendNoteInput,
+    PrependNoteInput,
+    MoveNoteInput,
+    DeleteNoteInput,
+)
 from obsidian_vault.core.note_operations import (
     create_note,
     retrieve_note,
@@ -91,9 +99,7 @@ async def retrieve_obsidian_note(
 # ``{"vault", "note", "path", "status"}``.
 @mcp.tool()
 async def create_obsidian_note(
-    title: str,
-    content: str,
-    vault: Optional[str] = None,
+    input: CreateNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Create new note with markdown content (fails if exists).
@@ -101,12 +107,16 @@ async def create_obsidian_note(
     Creates markdown file in vault. Automatically creates parent folders if
     needed. Fails if note already exists.
 
+    The input is validated automatically by Pydantic, providing detailed
+    error messages for invalid inputs before any processing occurs.
+
     Args:
-        title (str): Note identifier (path without .md extension)
-            Examples: "Daily Notes/2025-10-27", "Projects/New Project"
-            Folders created automatically
-        content (str): Full markdown content
-        vault (str, optional): Vault name (omit to use active vault)
+        input (CreateNoteInput): Validated input containing:
+            - title (str): Note identifier (path without .md extension)
+                Examples: "Daily Notes/2025-10-27", "Projects/New Project"
+                Folders created automatically
+            - content (str): Full markdown content (can be empty for blank note)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "status": "created"}
@@ -118,12 +128,12 @@ async def create_obsidian_note(
         - Don't use: Note might exist → Check with search_obsidian_notes() first
 
     Error Handling:
+        - ValidationError: Invalid title format, empty title, or path traversal attempt
         - Note exists → Error, suggest retrieve_obsidian_note() or replace_obsidian_note()
-        - Invalid title → Error describing issue
         - Filesystem permission error → Error with details
     """
-    metadata = resolve_vault(vault, ctx)
-    return create_note(metadata, title, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return create_note(metadata, input.title, input.content)
 
 
 # ==============================================================================
@@ -133,10 +143,7 @@ async def create_obsidian_note(
 # Moves or renames a note and optionally updates backlinks to preserve consistency.
 @mcp.tool()
 async def move_obsidian_note(
-    old_title: str,
-    new_title: str,
-    update_links: bool = True,
-    vault: Optional[str] = None,
+    input: MoveNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Move or rename a note, optionally updating backlinks.
@@ -145,17 +152,20 @@ async def move_obsidian_note(
     all wikilinks ([[link]]) and markdown links ([](link)) that reference
     the old path.
 
+    The input is validated automatically by Pydantic, ensuring both titles
+    are valid and different before any processing occurs.
+
     Args:
-        old_title (str): Current note path (without .md)
-            Example: "Mental Health/Old Name"
-        new_title (str): New note path (without .md)
-            Examples:
-                "Mental Health/New Name" (rename only)
-                "Archive/Old Name" (move only)
-                "Archive/New Name" (move and rename)
-        update_links (bool): If True, update all backlinks to this note
-            Default: True (recommended for vault consistency)
-        vault (str, optional): Vault name (omit to use active vault)
+        input (MoveNoteInput): Validated input containing:
+            - old_title (str): Current note path (without .md)
+                Example: "Mental Health/Old Name"
+            - new_title (str): New note path (without .md)
+                Examples: "Mental Health/New Name" (rename only),
+                         "Archive/Old Name" (move only),
+                         "Archive/New Name" (move and rename)
+            - update_links (bool): If True, update all backlinks to this note
+                Default: True (recommended for vault consistency)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {
@@ -174,20 +184,18 @@ async def move_obsidian_note(
         - Don't use: For simple content edits (use replace_obsidian_note)
 
     Error Handling:
+        - ValidationError: Invalid title format, empty titles, or titles are the same
         - Old note not found → Error with path
         - New note already exists → Error: "Note already exists at new location"
-        - Invalid paths → Error describing issue
     """
-    metadata = resolve_vault(vault, ctx)
-    return move_note(metadata, old_title, new_title, update_links=update_links)
+    metadata = resolve_vault(input.vault, ctx)
+    return move_note(metadata, input.old_title, input.new_title, update_links=input.update_links)
 
 
 # Replaces the entire file contents. The response includes ``status: "replaced"``.
 @mcp.tool()
 async def replace_obsidian_note(
-    title: str,
-    content: str,
-    vault: Optional[str] = None,
+    input: ReplaceNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Replace entire note content (overwrites everything).
@@ -195,10 +203,14 @@ async def replace_obsidian_note(
     Completely replaces note content with new markdown. Use for rewriting or
     major restructuring. For adding content, use append/prepend instead.
 
+    The input is validated automatically by Pydantic, providing detailed
+    error messages for invalid inputs before any processing occurs.
+
     Args:
-        title (str): Note identifier (path without .md extension)
-        content (str): New complete markdown content
-        vault (str, optional): Vault name (omit to use active vault)
+        input (ReplaceNoteInput): Validated input containing:
+            - title (str): Note identifier (path without .md extension)
+            - content (str): New complete markdown content (can be empty to clear note)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "status": "replaced"}
@@ -211,19 +223,17 @@ async def replace_obsidian_note(
         - Don't use: Note doesn't exist → Use create_obsidian_note()
 
     Error Handling:
+        - ValidationError: Invalid title format, empty title, or path traversal attempt
         - Note not found → Error, suggest create_obsidian_note() instead
-        - Invalid title → Error describing issue
     """
-    metadata = resolve_vault(vault, ctx)
-    return replace_note(metadata, title, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return replace_note(metadata, input.title, input.content)
 
 
 # Appends raw markdown to the end of a note, auto-inserting a newline when needed.
 @mcp.tool()
 async def append_to_obsidian_note(
-    title: str,
-    content: str,
-    vault: Optional[str] = None,
+    input: AppendNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Append content to end of note (most efficient for additions).
@@ -231,10 +241,14 @@ async def append_to_obsidian_note(
     Adds content to note end, automatically inserting newline separator if
     needed. Most token-efficient way to add content without reading entire note.
 
+    The input is validated automatically by Pydantic, ensuring content is
+    not empty before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        content (str): Markdown to append
-        vault (str, optional): Vault name (omit to use active vault)
+        input (AppendNoteInput): Validated input containing:
+            - title (str): Note identifier
+            - content (str): Markdown to append (must not be empty)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "status": "appended"}
@@ -249,18 +263,17 @@ async def append_to_obsidian_note(
         - Don't use: Inserting at specific location → Use insert_after_heading
 
     Error Handling:
+        - ValidationError: Invalid title, empty title, empty content, or path traversal
         - Note not found → Error, suggest create_obsidian_note() instead
     """
-    metadata = resolve_vault(vault, ctx)
-    return append_to_note(metadata, title, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return append_to_note(metadata, input.title, input.content)
 
 
 # Inserts raw markdown at the start of the file, preserving existing content.
 @mcp.tool()
 async def prepend_to_obsidian_note(
-    title: str,
-    content: str,
-    vault: Optional[str] = None,
+    input: PrependNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Prepend content to beginning of note.
@@ -268,10 +281,14 @@ async def prepend_to_obsidian_note(
     Adds content before existing note content with automatic newline handling.
     Useful for frontmatter, summaries, or reverse chronological entries.
 
+    The input is validated automatically by Pydantic, ensuring content is
+    not empty before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        content (str): Markdown to prepend
-        vault (str, optional): Vault name (omit to use active vault)
+        input (PrependNoteInput): Validated input containing:
+            - title (str): Note identifier
+            - content (str): Markdown to prepend (must not be empty)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "status": "prepended"}
@@ -283,10 +300,11 @@ async def prepend_to_obsidian_note(
         - Don't use: Most cases (append is more common)
 
     Error Handling:
+        - ValidationError: Invalid title, empty title, empty content, or path traversal
         - Note not found → Error, suggest create_obsidian_note()
     """
-    metadata = resolve_vault(vault, ctx)
-    return prepend_to_note(metadata, title, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return prepend_to_note(metadata, input.title, input.content)
 
 
 # ==============================================================================
@@ -296,8 +314,7 @@ async def prepend_to_obsidian_note(
 # Removes the markdown file entirely. Response includes the filesystem path for logging.
 @mcp.tool()
 async def delete_obsidian_note(
-    title: str,
-    vault: Optional[str] = None,
+    input: DeleteNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Delete note completely (permanently removes file).
@@ -305,9 +322,13 @@ async def delete_obsidian_note(
     Permanently removes note file from vault. Cannot be undone through this
     tool. Always confirm with user before calling.
 
+    The input is validated automatically by Pydantic, providing detailed
+    error messages for invalid inputs before any processing occurs.
+
     Args:
-        title (str): Note identifier (path without .md extension)
-        vault (str, optional): Vault name (omit to use active vault)
+        input (DeleteNoteInput): Validated input containing:
+            - title (str): Note identifier (path without .md extension)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "status": "deleted"}
@@ -319,8 +340,9 @@ async def delete_obsidian_note(
         - Don't use: Clearing content → Use replace_obsidian_note() with minimal content
 
     Error Handling:
+        - ValidationError: Invalid title format, empty title, or path traversal attempt
         - Note not found → Error, use search_obsidian_notes() to find correct title
         - Filesystem permission error → Error with details
     """
-    metadata = resolve_vault(vault, ctx)
-    return delete_note(metadata, title)
+    metadata = resolve_vault(input.vault, ctx)
+    return delete_note(metadata, input.title)
