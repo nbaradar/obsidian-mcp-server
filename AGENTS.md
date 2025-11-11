@@ -104,10 +104,39 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
 * Added regression coverage in `tests/test_path_normalization.py` for dotted basenames, nested paths, uppercase `.MD`, and traversal rejection.
 * Documented behavior in README and AGENTS to clarify support for dotted note names.
 
-**v1.5 — Enhancements**
+**v1.5 — Pydantic Input Validation (In Progress)**
 
-* Improve search with snippets and partial reads.
-* Add rename/move functionality with optional backlink updates.
+* **Phase 1 (Completed)**: Infrastructure & Foundation
+  - Added `obsidian_vault/input_models.py` with Pydantic v2 models for input validation
+  - Created `BaseNoteInput` model with comprehensive note title and vault validation
+  - Implemented custom validators that enforce security rules:
+    * No path traversal (`..` or `.` segments)
+    * No absolute paths (must be relative to vault)
+    * Automatic `.md` extension stripping for normalization
+    * Empty title detection with helpful error messages
+  - Migrated `retrieve_obsidian_note` tool to use `RetrieveNoteInput` Pydantic model
+  - Added comprehensive test suite (`tests/test_input_models.py`) with 30+ test cases
+  - Benefits: MCP clients now receive JSON schemas with validation rules upfront, reducing trial-and-error validation failures
+
+* **Phase 2 (Planned)**: Note CRUD Tools
+  - Migrate all 7 note CRUD tools (create, replace, append, prepend, move, delete)
+  - Create dedicated input models for each operation type
+  - Remove redundant validation from core operations
+
+* **Phase 3 (Planned)**: Section Manipulation Tools
+  - Migrate 4 section/heading tools with heading-specific validation
+
+* **Phase 4 (Planned)**: Search & Frontmatter Tools
+  - Migrate search tools with Literal types for sort_by and match_mode
+  - Migrate frontmatter tools with YAML-specific validation
+
+* **Phase 5 (Planned)**: Vault Management Tools
+  - Migrate vault selection tools with existence validation
+
+* **Phase 6 (Planned)**: Cleanup & Optimization
+  - Remove redundant validation from `vault_operations.normalize_note_identifier()`
+  - Consolidate validation logic in input models
+  - Performance benchmarking and optimization
 
 **v2 — Advanced Behavior**
 
@@ -139,7 +168,8 @@ obsidian-mcp-server/
 │   ├── __init__.py              # Package initialization, exports server and tools
 │   ├── server.py                # FastMCP server setup and tool registration
 │   ├── config.py                # Configuration loading (vaults.yaml)
-│   ├── models.py                # Pydantic models and dataclasses
+│   ├── models.py                # Data models (VaultMetadata, etc.)
+│   ├── input_models.py          # Pydantic input validation models (v1.5+)
 │   ├── session.py               # Session state management (active vault)
 │   ├── constants.py             # Module-level constants
 │   │
@@ -160,6 +190,10 @@ obsidian-mcp-server/
 ├── main.py                      # Entry point for MCP server
 ├── vaults.yaml                  # Vault configuration
 └── tests/                       # Test suite
+    ├── test_input_models.py     # Pydantic validation tests (v1.5+)
+    ├── test_frontmatter.py
+    ├── test_tag_search.py
+    └── test_path_normalization.py
 ```
 
 ### Design Principles
@@ -174,22 +208,41 @@ obsidian-mcp-server/
 
 3. **Testability**: Core modules can be tested without MCP server infrastructure. Tool modules test MCP integration separately.
 
-4. **Import Flow**:
+4. **Input Validation (v1.5+)**: Pydantic models (`input_models.py`) provide automatic input validation at the MCP tool boundary:
+   - Validation happens before any business logic executes
+   - Detailed, field-level error messages for invalid inputs
+   - Automatic JSON schema generation for MCP clients
+   - Models inherit from base classes to share common validation
+   - Security-critical validation (path traversal, empty inputs) enforced at this layer
+   - Core operations receive pre-validated data and focus on business logic
+
+5. **Import Flow**:
    - `main.py` → `obsidian_vault/__init__.py` → imports `tools/` → registers with `server.py`
-   - Tools import from `core/` for business logic
+   - Tools import from `input_models.py` for validation, then delegate to `core/` for business logic
    - `core/` modules import from `models.py`, `constants.py` (no circular deps)
+   - `input_models.py` is standalone with only Pydantic dependencies
 
 ### Working with the Codebase
 
-**Adding a New Tool:**
-1. Add core logic function to appropriate `core/*.py` module
-2. Create MCP wrapper in appropriate `tools/*.py` module
-3. Import is automatic via `tools/__init__.py`
+**Adding a New Tool (v1.5+ with Pydantic):**
+1. Define input model in `input_models.py` (inherit from base classes if applicable)
+2. Add core logic function to appropriate `core/*.py` module
+3. Create MCP wrapper in appropriate `tools/*.py` module that accepts the input model
+4. Add tests in `tests/test_input_models.py` for validation logic
+5. Import is automatic via `tools/__init__.py`
 
 **Modifying Business Logic:**
 1. Edit the appropriate `core/*.py` module
-2. No changes needed to tool wrappers (they just delegate)
-3. Update tests in `tests/`
+2. If input requirements change, update the corresponding input model in `input_models.py`
+3. No changes needed to tool wrappers (they just delegate)
+4. Update tests in `tests/`
+
+**Adding/Modifying Validation Rules:**
+1. Edit the input model in `input_models.py`
+2. Add custom validators using `@field_validator` or `@model_validator`
+3. Update field descriptions and constraints using `Field()`
+4. Add test cases in `tests/test_input_models.py`
+5. Changes are automatically reflected in MCP JSON schemas
 
 **Configuration Changes:**
 1. Edit `vaults.yaml` for vault configuration
@@ -199,9 +252,11 @@ obsidian-mcp-server/
 ## 2025-10 Status Notes (for future maintainers)
 
 * **Codebase**: As of v1.4.3, the codebase uses a modular package structure. The old `obsidian_vault.py` monolith has been refactored into `obsidian_vault/` package with clear separation between core business logic (`core/`) and MCP tool wrappers (`tools/`).
+* **Pydantic Validation (v1.5+)**: As of v1.5 Phase 1, input validation is being migrated to Pydantic models in `input_models.py`. Tools now accept Pydantic model instances instead of raw parameters. This provides automatic validation, JSON schema generation, and better error messages. The migration is happening in phases—check the Development Phases section for current status. When adding new tools, always create a corresponding Pydantic input model.
 * **Configuration**: `vaults.yaml` is the single source of truth for vault discovery. Add new vault entries there with `default: <name>` updated accordingly. Loaded by `config.py` at module import time.
-* **Testing**: Regression tests live in `tests/test_frontmatter.py` (frontmatter), `tests/test_tag_search.py` (tag workflows), and `tests/test_path_normalization.py` (note identifier safety). Keep them updated before broader refactors.
-* **Dependencies**: `python-frontmatter>=1.1.0` is required. Use `uv pip install -r requirements.txt` to install dependencies.
+* **Testing**: Regression tests live in `tests/test_input_models.py` (Pydantic validation), `tests/test_frontmatter.py` (frontmatter), `tests/test_tag_search.py` (tag workflows), and `tests/test_path_normalization.py` (note identifier safety). Keep them updated before broader refactors.
+* **Dependencies**: `python-frontmatter>=1.1.0` and `pydantic>=2.0.0` are required. Use `uv pip install -r requirements.txt` to install dependencies.
 * **Session Management**: The session cache (`_ACTIVE_VAULTS` in `session.py`) keys off `id(ctx.session)`. FastMCP manages session lifetimes; garbage collection handles cleanup automatically.
 * **Tool Returns**: All tool return dicts are designed for Claude Desktop but are equally useful for scripts or future REST layers—preserve this structure when extending functionality.
 * **Vault Metadata**: `vault.exists` in config payloads is computed dynamically via `Path.is_dir()` in `models.py`, so stale metadata is less likely.
+* **Validation Architecture**: Validation is split into two layers: (1) Input validation in `input_models.py` using Pydantic (format, safety, types), (2) Business logic validation in `core/` modules (file existence, vault accessibility). This keeps security-critical validation at the entry point while allowing core modules to focus on domain logic.

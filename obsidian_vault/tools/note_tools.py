@@ -19,6 +19,7 @@ from mcp.server.fastmcp import Context
 
 from obsidian_vault.server import mcp
 from obsidian_vault.session import resolve_vault
+from obsidian_vault.input_models import RetrieveNoteInput
 from obsidian_vault.core.note_operations import (
     create_note,
     retrieve_note,
@@ -37,8 +38,7 @@ from obsidian_vault.core.note_operations import (
 # Returns the full markdown body along with metadata. Errors if the note is missing.
 @mcp.tool()
 async def retrieve_obsidian_note(
-    title: str,
-    vault: Optional[str] = None,
+    input: RetrieveNoteInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Retrieve complete note content (full markdown).
@@ -46,12 +46,16 @@ async def retrieve_obsidian_note(
     Returns entire markdown content of a note. Can be expensive for large
     notes (5000+ tokens). Consider search_obsidian_content() first for preview.
 
+    The input is validated automatically by Pydantic, providing detailed
+    error messages for invalid inputs before any processing occurs.
+
     Args:
-        title (str): Note identifier (path without .md extension)
-            Examples: "Daily Notes/2025-10-26"
-                     "Mental Health/Reflections Oct 26 2025"
-            Forward slashes for folders, case-sensitive
-        vault (str, optional): Vault name (omit to use active vault)
+        input (RetrieveNoteInput): Validated input containing:
+            - title (str): Note identifier (path without .md extension)
+                Examples: "Daily Notes/2025-10-26"
+                         "Mental Health/Reflections Oct 26 2025"
+                Forward slashes for folders, case-sensitive
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {
@@ -71,12 +75,12 @@ async def retrieve_obsidian_note(
         - Don't use: Preview only → Use search_obsidian_content() for snippets
 
     Error Handling:
+        - ValidationError: Invalid title format, empty title, or path traversal attempt
         - Note not found → Error with note path, use search_obsidian_notes()
-        - Invalid title (../) → Error: "Note title cannot contain '..'"
         - Vault not accessible → Error with vault path
     """
-    metadata = resolve_vault(vault, ctx)
-    return retrieve_note(metadata, title)
+    metadata = resolve_vault(input.vault, ctx)
+    return retrieve_note(metadata, input.title)
 
 
 # ==============================================================================
