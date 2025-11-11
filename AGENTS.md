@@ -141,9 +141,32 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
   - Added 50+ test cases covering heading validation (empty, # stripping, whitespace)
   - All section tools now have comprehensive validation for title, heading, and content
 
-* **Phase 4 (Planned)**: Search & Frontmatter Tools
-  - Migrate search tools with Literal types for sort_by and match_mode
-  - Migrate frontmatter tools with YAML-specific validation
+* **Phase 3.5 (Completed)**: Refactor to Package Structure
+  - Refactored `obsidian_vault/input_models.py` (740 lines) into organized package structure
+  - Created `obsidian_vault/models/` directory with focused modules:
+    * `base.py` - BaseNoteInput and BaseSectionInput base classes
+    * `note_models.py` - 7 note CRUD input models
+    * `section_models.py` - 4 section manipulation input models
+    * `__init__.py` - Centralized exports for all models
+  - Updated imports in all tool and test files
+  - Benefits: Better organization, easier navigation, prepares for Phase 4 expansion
+
+* **Phase 4 (Completed)**: Search & Frontmatter Tools
+  - Created `obsidian_vault/models/search_models.py` with 5 search input models:
+    * `ListNotesInput` - Validates vault name, includes metadata flag
+    * `SearchNotesInput` - Validates query not empty, sort_by in allowed values (modified/created/size/name)
+    * `SearchContentInput` - Validates query not empty for content search
+    * `SearchNotesByTagInput` - Validates tags list not empty, filters empty tag strings
+    * `ListNotesInFolderInput` - Validates folder_path (no path traversal), sort_by in allowed values
+  - Created `obsidian_vault/models/frontmatter_models.py` with 4 frontmatter input models:
+    * `ReadFrontmatterInput` - Inherits from BaseNoteInput
+    * `UpdateFrontmatterInput` - Adds frontmatter dict field for merging
+    * `ReplaceFrontmatterInput` - Adds frontmatter dict field for replacement
+    * `DeleteFrontmatterInput` - Inherits from BaseNoteInput
+  - Migrated all 9 tools (5 search + 4 frontmatter) to use Pydantic models
+  - Added validation for sort_by parameters to prevent invalid values
+  - Added validation for folder paths to prevent path traversal
+  - All search and frontmatter operations now have comprehensive validation at MCP boundary
 
 * **Phase 5 (Planned)**: Vault Management Tools
   - Migrate vault selection tools with existence validation
@@ -184,9 +207,16 @@ obsidian-mcp-server/
 │   ├── server.py                # FastMCP server setup and tool registration
 │   ├── config.py                # Configuration loading (vaults.yaml)
 │   ├── models.py                # Data models (VaultMetadata, etc.)
-│   ├── input_models.py          # Pydantic input validation models (v1.5+)
 │   ├── session.py               # Session state management (active vault)
 │   ├── constants.py             # Module-level constants
+│   │
+│   ├── models/                  # Pydantic input validation models (v1.5+)
+│   │   ├── __init__.py               # Exports all input models
+│   │   ├── base.py                   # Base models (BaseNoteInput, BaseSectionInput)
+│   │   ├── note_models.py            # Note CRUD input models
+│   │   ├── section_models.py         # Section manipulation input models
+│   │   ├── search_models.py          # Search and discovery input models
+│   │   └── frontmatter_models.py     # Frontmatter management input models
 │   │
 │   ├── core/                    # Core business logic (NO MCP dependencies)
 │   │   ├── vault_operations.py       # Path validation and sandboxing

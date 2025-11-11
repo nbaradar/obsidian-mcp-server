@@ -15,9 +15,12 @@ Architecture:
 - base: Base models (BaseNoteInput, BaseSectionInput) for common validation
 - note_models: Input models for note CRUD operations
 - section_models: Input models for section manipulation operations
+- search_models: Input models for search and discovery operations
+- frontmatter_models: Input models for frontmatter management operations
 
 Usage:
     from obsidian_vault.models import RetrieveNoteInput, CreateNoteInput
+    from obsidian_vault.models import SearchNotesInput, ReadFrontmatterInput
 """
 
 from .base import BaseNoteInput, BaseSectionInput
@@ -35,6 +38,19 @@ from .section_models import (
     AppendToSectionInput,
     ReplaceSectionInput,
     DeleteSectionInput,
+)
+from .search_models import (
+    ListNotesInput,
+    SearchNotesInput,
+    SearchContentInput,
+    SearchNotesByTagInput,
+    ListNotesInFolderInput,
+)
+from .frontmatter_models import (
+    ReadFrontmatterInput,
+    UpdateFrontmatterInput,
+    ReplaceFrontmatterInput,
+    DeleteFrontmatterInput,
 )
 
 __all__ = [
@@ -54,4 +70,15 @@ __all__ = [
     "AppendToSectionInput",
     "ReplaceSectionInput",
     "DeleteSectionInput",
+    # Search models
+    "ListNotesInput",
+    "SearchNotesInput",
+    "SearchContentInput",
+    "SearchNotesByTagInput",
+    "ListNotesInFolderInput",
+    # Frontmatter models
+    "ReadFrontmatterInput",
+    "UpdateFrontmatterInput",
+    "ReplaceFrontmatterInput",
+    "DeleteFrontmatterInput",
 ]
