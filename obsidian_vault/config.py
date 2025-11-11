@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from obsidian_vault.constants import CONFIG_PATH
-from obsidian_vault.models import VaultMetadata, VaultConfiguration
+from obsidian_vault.data_models import VaultMetadata, VaultConfiguration
 
 logger = logging.getLogger(__name__)
 

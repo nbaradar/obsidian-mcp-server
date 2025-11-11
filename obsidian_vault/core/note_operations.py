@@ -14,7 +14,7 @@ from obsidian_vault.core.vault_operations import (
     resolve_note_path,
     note_display_name,
 )
-from obsidian_vault.models import VaultMetadata
+from obsidian_vault.data_models import VaultMetadata
 
 logger = logging.getLogger(__name__)
 

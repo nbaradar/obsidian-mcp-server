@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from mcp.server.fastmcp import Context
 
 from obsidian_vault.config import VAULT_CONFIGURATION
-from obsidian_vault.models import VaultMetadata
+from obsidian_vault.data_models import VaultMetadata
 
 # Session state storage
 _ACTIVE_VAULTS: Dict[int, str] = {}
