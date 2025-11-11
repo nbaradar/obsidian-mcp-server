@@ -130,8 +130,16 @@ Security is enforced in multiple layers inside `obsidian_vault.py`:
   - Created `VALIDATION_REDUNDANCY.md` documenting overlapping validation for Phase 6 cleanup
   - All note CRUD operations now have comprehensive Pydantic validation at MCP boundary
 
-* **Phase 3 (Planned)**: Section Manipulation Tools
-  - Migrate 4 section/heading tools with heading-specific validation
+* **Phase 3 (Completed)**: Section Manipulation Tools
+  - Created `BaseSectionInput` model extending `BaseNoteInput` with heading validation
+  - Implemented heading normalization: strips whitespace, removes # markers user accidentally includes
+  - Migrated all 4 section manipulation tools to use Pydantic models:
+    * `insert_after_heading_obsidian_note` → `InsertAfterHeadingInput` (validates content not empty)
+    * `append_to_section_obsidian_note` → `AppendToSectionInput` (validates content not empty)
+    * `replace_section_obsidian_note` → `ReplaceSectionInput` (allows empty content to clear section)
+    * `delete_section_obsidian_note` → `DeleteSectionInput`
+  - Added 50+ test cases covering heading validation (empty, # stripping, whitespace)
+  - All section tools now have comprehensive validation for title, heading, and content
 
 * **Phase 4 (Planned)**: Search & Frontmatter Tools
   - Migrate search tools with Literal types for sort_by and match_mode

@@ -16,6 +16,12 @@ from mcp.server.fastmcp import Context
 
 from obsidian_vault.server import mcp
 from obsidian_vault.session import resolve_vault
+from obsidian_vault.input_models import (
+    InsertAfterHeadingInput,
+    AppendToSectionInput,
+    ReplaceSectionInput,
+    DeleteSectionInput,
+)
 from obsidian_vault.core.section_operations import (
     insert_after_heading,
     append_to_section,
@@ -32,10 +38,7 @@ from obsidian_vault.core.section_operations import (
 # omit ``#`` markers. Response echoes the resolved heading title.
 @mcp.tool()
 async def insert_after_heading_obsidian_note(
-    title: str,
-    content: str,
-    heading: str,
-    vault: Optional[str] = None,
+    input: InsertAfterHeadingInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Insert content immediately after a heading.
@@ -43,13 +46,17 @@ async def insert_after_heading_obsidian_note(
     Finds heading (case-insensitive) and inserts content right after it,
     before any existing content or subsections.
 
+    The input is validated automatically by Pydantic, ensuring heading and
+    content are valid before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        content (str): Markdown to insert
-        heading (str): Heading text (case-insensitive, without # markers)
-            Examples: "Tasks", "Meeting Notes", "Summary"
-            Matches first occurrence at any level
-        vault (str, optional): Vault name (omit to use active vault)
+        input (InsertAfterHeadingInput): Validated input containing:
+            - title (str): Note identifier
+            - heading (str): Heading text (case-insensitive, without # markers)
+                Examples: "Tasks", "Meeting Notes", "Summary"
+                Matches first occurrence at any level
+            - content (str): Markdown to insert (must not be empty)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "heading": str, "status": "inserted_after_heading"}
@@ -61,21 +68,19 @@ async def insert_after_heading_obsidian_note(
         - Don't use: Replacing section → Use replace_section_obsidian_note()
 
     Error Handling:
+        - ValidationError: Invalid title, empty heading, empty content, or path traversal
         - Note not found → Error with note path
         - Heading not found → Error, suggest retrieve_obsidian_note() to see structure
     """
-    metadata = resolve_vault(vault, ctx)
-    return insert_after_heading(metadata, title, heading, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return insert_after_heading(metadata, input.title, input.heading, input.content)
 
 
 # Appends to the end of the heading's direct section content, just before any nested
 # subsections. Response includes ``status: "section_appended"``.
 @mcp.tool()
 async def append_to_section_obsidian_note(
-    title: str,
-    content: str,
-    heading: str,
-    vault: Optional[str] = None,
+    input: AppendToSectionInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Append content to end of section (before subsections).
@@ -84,11 +89,15 @@ async def append_to_section_obsidian_note(
     before any subsections. Different from insert_after_heading which puts
     content immediately after heading line.
 
+    The input is validated automatically by Pydantic, ensuring heading and
+    content are valid before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        content (str): Markdown to append
-        heading (str): Heading text (case-insensitive, without # markers)
-        vault (str, optional): Vault name (omit to use active vault)
+        input (AppendToSectionInput): Validated input containing:
+            - title (str): Note identifier
+            - heading (str): Heading text (case-insensitive, without # markers)
+            - content (str): Markdown to append (must not be empty)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "heading": str, "status": "section_appended"}
@@ -100,20 +109,18 @@ async def append_to_section_obsidian_note(
         - Don't use: Replacing section → Use replace_section_obsidian_note()
 
     Error Handling:
+        - ValidationError: Invalid title, empty heading, empty content, or path traversal
         - Note not found → Error with note path
         - Heading not found → Error with heading name
     """
-    metadata = resolve_vault(vault, ctx)
-    return append_to_section(metadata, title, heading, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return append_to_section(metadata, input.title, input.heading, input.content)
 
 
 # Replaces the section body beneath a heading until the next equal-or-higher heading.
 @mcp.tool()
 async def replace_section_obsidian_note(
-    title: str,
-    content: str,
-    heading: str,
-    vault: Optional[str] = None,
+    input: ReplaceSectionInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Replace content under heading (until next same-level heading).
@@ -121,11 +128,15 @@ async def replace_section_obsidian_note(
     Replaces everything under a heading until next heading of equal or higher
     level. Preserves the heading itself. Use for rewriting entire sections.
 
+    The input is validated automatically by Pydantic, ensuring heading is
+    valid before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        content (str): New content for section body
-        heading (str): Heading text (case-insensitive, without # markers)
-        vault (str, optional): Vault name (omit to use active vault)
+        input (ReplaceSectionInput): Validated input containing:
+            - title (str): Note identifier
+            - heading (str): Heading text (case-insensitive, without # markers)
+            - content (str): New content for section body (can be empty to clear)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "heading": str, "status": "section_replaced"}
@@ -137,19 +148,18 @@ async def replace_section_obsidian_note(
         - Don't use: Removing section → Use delete_section_obsidian_note()
 
     Error Handling:
+        - ValidationError: Invalid title, empty heading, or path traversal
         - Note not found → Error with note path
         - Heading not found → Error, use retrieve_obsidian_note() to see structure
     """
-    metadata = resolve_vault(vault, ctx)
-    return replace_section(metadata, title, heading, content)
+    metadata = resolve_vault(input.vault, ctx)
+    return replace_section(metadata, input.title, input.heading, input.content)
 
 
 # Deletes a heading and its section content. Useful for removing stale blocks.
 @mcp.tool()
 async def delete_section_obsidian_note(
-    title: str,
-    heading: str,
-    vault: Optional[str] = None,
+    input: DeleteSectionInput,
     ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Delete heading and its section (removes heading and all content).
@@ -157,10 +167,14 @@ async def delete_section_obsidian_note(
     Removes heading and everything under it until next heading of equal or
     higher level. Heading itself is also deleted.
 
+    The input is validated automatically by Pydantic, ensuring heading is
+    valid before any processing occurs.
+
     Args:
-        title (str): Note identifier
-        heading (str): Heading text (case-insensitive, without # markers)
-        vault (str, optional): Vault name (omit to use active vault)
+        input (DeleteSectionInput): Validated input containing:
+            - title (str): Note identifier
+            - heading (str): Heading text (case-insensitive, without # markers)
+            - vault (str, optional): Vault name (omit to use active vault)
 
     Returns:
         {"vault": str, "note": str, "path": str, "heading": str, "status": "section_deleted"}
@@ -172,8 +186,9 @@ async def delete_section_obsidian_note(
         - Don't use: Deleting entire note → Use delete_obsidian_note()
 
     Error Handling:
+        - ValidationError: Invalid title, empty heading, or path traversal
         - Note not found → Error with note path
         - Heading not found → Error with heading name
     """
-    metadata = resolve_vault(vault, ctx)
-    return delete_section(metadata, title, heading)
+    metadata = resolve_vault(input.vault, ctx)
+    return delete_section(metadata, input.title, input.heading)

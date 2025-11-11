@@ -20,6 +20,11 @@ from obsidian_vault.input_models import (
     PrependNoteInput,
     MoveNoteInput,
     DeleteNoteInput,
+    BaseSectionInput,
+    InsertAfterHeadingInput,
+    AppendToSectionInput,
+    ReplaceSectionInput,
+    DeleteSectionInput,
 )
 
 
@@ -528,3 +533,230 @@ class TestAllModelsSchemaGeneration:
         schema = DeleteNoteInput.model_json_schema()
         assert "properties" in schema
         assert "title" in schema["properties"]
+
+
+# ==============================================================================
+# SECTION MANIPULATION MODEL TESTS
+# ==============================================================================
+
+
+class TestBaseSectionInput:
+    """Test suite for BaseSectionInput model validation."""
+
+    def test_valid_section_input(self):
+        """Test that valid section input is accepted."""
+        model = BaseSectionInput(title="My Note", heading="Tasks")
+        assert model.title == "My Note"
+        assert model.heading == "Tasks"
+
+    def test_valid_heading_with_whitespace(self):
+        """Test that headings with leading/trailing whitespace are stripped."""
+        model = BaseSectionInput(title="Note", heading="  Tasks  ")
+        assert model.heading == "Tasks"
+
+    def test_heading_strips_hash_markers(self):
+        """Test that # markers are stripped from headings."""
+        model = BaseSectionInput(title="Note", heading="# Tasks")
+        assert model.heading == "Tasks"
+
+    def test_heading_strips_multiple_hash_markers(self):
+        """Test that multiple # markers are stripped."""
+        model = BaseSectionInput(title="Note", heading="## Tasks")
+        assert model.heading == "Tasks"
+
+    def test_heading_strips_hash_with_space(self):
+        """Test that # with trailing space is handled."""
+        model = BaseSectionInput(title="Note", heading="# Tasks")
+        assert model.heading == "Tasks"
+
+    def test_empty_heading_raises_error(self):
+        """Test that empty heading raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            BaseSectionInput(title="Note", heading="")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "empty" in error_messages.lower() or "heading" in error_messages.lower()
+
+    def test_whitespace_only_heading_raises_error(self):
+        """Test that whitespace-only heading raises ValidationError."""
+        with pytest.raises(ValidationError):
+            BaseSectionInput(title="Note", heading="   ")
+
+    def test_only_hash_markers_raises_error(self):
+        """Test that heading with only # raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            BaseSectionInput(title="Note", heading="###")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "heading" in error_messages.lower()
+
+    def test_section_inherits_title_validation(self):
+        """Test that title validation is inherited from BaseNoteInput."""
+        with pytest.raises(ValidationError):
+            BaseSectionInput(title="", heading="Tasks")
+
+        with pytest.raises(ValidationError):
+            BaseSectionInput(title="../escape", heading="Tasks")
+
+
+class TestInsertAfterHeadingInput:
+    """Test suite for InsertAfterHeadingInput model validation."""
+
+    def test_valid_insert_input(self):
+        """Test valid insert after heading input."""
+        model = InsertAfterHeadingInput(
+            title="Note",
+            heading="Tasks",
+            content="\n- New task"
+        )
+        assert model.title == "Note"
+        assert model.heading == "Tasks"
+        assert model.content == "\n- New task"
+
+    def test_insert_empty_content_raises_error(self):
+        """Test that empty content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            InsertAfterHeadingInput(title="Note", heading="Tasks", content="")
+
+        errors = exc_info.value.errors()
+        error_messages = " ".join(str(e) for e in errors)
+        assert "empty" in error_messages.lower() or "content" in error_messages.lower()
+
+    def test_insert_whitespace_content_raises_error(self):
+        """Test that whitespace-only content raises ValidationError."""
+        with pytest.raises(ValidationError):
+            InsertAfterHeadingInput(title="Note", heading="Tasks", content="   ")
+
+    def test_insert_inherits_heading_validation(self):
+        """Test that heading validation is inherited from BaseSectionInput."""
+        with pytest.raises(ValidationError):
+            InsertAfterHeadingInput(title="Note", heading="", content="test")
+
+        # Test that # is stripped
+        model = InsertAfterHeadingInput(title="Note", heading="# Tasks", content="test")
+        assert model.heading == "Tasks"
+
+
+class TestAppendToSectionInput:
+    """Test suite for AppendToSectionInput model validation."""
+
+    def test_valid_append_section_input(self):
+        """Test valid append to section input."""
+        model = AppendToSectionInput(
+            title="Log",
+            heading="Today",
+            content="\n- 5pm meeting"
+        )
+        assert model.title == "Log"
+        assert model.heading == "Today"
+        assert model.content == "\n- 5pm meeting"
+
+    def test_append_section_empty_content_raises_error(self):
+        """Test that empty content raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            AppendToSectionInput(title="Note", heading="Tasks", content="")
+
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+
+    def test_append_section_whitespace_content_raises_error(self):
+        """Test that whitespace-only content raises ValidationError."""
+        with pytest.raises(ValidationError):
+            AppendToSectionInput(title="Note", heading="Tasks", content="  \n  ")
+
+    def test_append_section_inherits_validation(self):
+        """Test that title and heading validation are inherited."""
+        with pytest.raises(ValidationError):
+            AppendToSectionInput(title="", heading="Tasks", content="test")
+
+        with pytest.raises(ValidationError):
+            AppendToSectionInput(title="Note", heading="", content="test")
+
+
+class TestReplaceSectionInput:
+    """Test suite for ReplaceSectionInput model validation."""
+
+    def test_valid_replace_section_input(self):
+        """Test valid replace section input."""
+        model = ReplaceSectionInput(
+            title="Doc",
+            heading="API",
+            content="New API documentation"
+        )
+        assert model.title == "Doc"
+        assert model.heading == "API"
+        assert model.content == "New API documentation"
+
+    def test_replace_section_empty_content_allowed(self):
+        """Test that empty content is allowed for replacing (to clear section)."""
+        model = ReplaceSectionInput(title="Note", heading="Tasks", content="")
+        assert model.content == ""
+
+    def test_replace_section_inherits_validation(self):
+        """Test that title and heading validation are inherited."""
+        with pytest.raises(ValidationError):
+            ReplaceSectionInput(title="../escape", heading="Tasks", content="test")
+
+        with pytest.raises(ValidationError):
+            ReplaceSectionInput(title="Note", heading="###", content="test")
+
+
+class TestDeleteSectionInput:
+    """Test suite for DeleteSectionInput model validation."""
+
+    def test_valid_delete_section_input(self):
+        """Test valid delete section input."""
+        model = DeleteSectionInput(title="Note", heading="Old Section")
+        assert model.title == "Note"
+        assert model.heading == "Old Section"
+
+    def test_delete_section_with_vault(self):
+        """Test delete section with vault specified."""
+        model = DeleteSectionInput(title="Note", heading="Old", vault="work")
+        assert model.vault == "work"
+
+    def test_delete_section_strips_hash_from_heading(self):
+        """Test that # is stripped from heading."""
+        model = DeleteSectionInput(title="Note", heading="## Old Section")
+        assert model.heading == "Old Section"
+
+    def test_delete_section_inherits_validation(self):
+        """Test that title and heading validation are inherited."""
+        with pytest.raises(ValidationError):
+            DeleteSectionInput(title="", heading="Tasks")
+
+        with pytest.raises(ValidationError):
+            DeleteSectionInput(title="Note", heading="")
+
+
+class TestSectionModelsSchemaGeneration:
+    """Test that all section models can generate JSON schemas for MCP."""
+
+    def test_insert_after_heading_schema(self):
+        """Test InsertAfterHeadingInput schema generation."""
+        schema = InsertAfterHeadingInput.model_json_schema()
+        assert "properties" in schema
+        assert "title" in schema["properties"]
+        assert "heading" in schema["properties"]
+        assert "content" in schema["properties"]
+
+    def test_append_to_section_schema(self):
+        """Test AppendToSectionInput schema generation."""
+        schema = AppendToSectionInput.model_json_schema()
+        assert "properties" in schema
+        assert "heading" in schema["properties"]
+
+    def test_replace_section_schema(self):
+        """Test ReplaceSectionInput schema generation."""
+        schema = ReplaceSectionInput.model_json_schema()
+        assert "properties" in schema
+        assert "content" in schema["properties"]
+
+    def test_delete_section_schema(self):
+        """Test DeleteSectionInput schema generation."""
+        schema = DeleteSectionInput.model_json_schema()
+        assert "properties" in schema
+        assert "title" in schema["properties"]
+        assert "heading" in schema["properties"]
