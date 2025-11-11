@@ -1,7 +1,7 @@
 """Core vault operations and validation."""
 
 from pathlib import Path
-from obsidian_vault.models import VaultMetadata
+from obsidian_vault.data_models import VaultMetadata
 
 
 def ensure_vault_ready(vault: VaultMetadata) -> None:

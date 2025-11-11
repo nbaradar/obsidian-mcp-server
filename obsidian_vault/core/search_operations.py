@@ -13,7 +13,7 @@ import yaml
 
 from obsidian_vault.core.vault_operations import ensure_vault_ready
 from obsidian_vault.core.note_operations import _get_note_metadata, list_notes
-from obsidian_vault.models import VaultMetadata
+from obsidian_vault.data_models import VaultMetadata
 
 logger = logging.getLogger(__name__)
 
