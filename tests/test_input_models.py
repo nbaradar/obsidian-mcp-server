@@ -11,7 +11,7 @@ ensuring that:
 import pytest
 from pydantic import ValidationError
 
-from obsidian_vault.input_models import (
+from obsidian_vault.models import (
     BaseNoteInput,
     RetrieveNoteInput,
     CreateNoteInput,

@@ -16,7 +16,7 @@ from mcp.server.fastmcp import Context
 
 from obsidian_vault.server import mcp
 from obsidian_vault.session import resolve_vault
-from obsidian_vault.input_models import (
+from obsidian_vault.models import (
     InsertAfterHeadingInput,
     AppendToSectionInput,
     ReplaceSectionInput,
